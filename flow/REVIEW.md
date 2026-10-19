@@ -16,7 +16,7 @@ GitLab and git mechanics (glab commands, worktrees, branch state, the host revie
 Triggered by "review MR", `/review-mr`, `/review-mr <MR url>` or `/review-mr <KEY>`.
 1. Read `flow/rules.md`, `flow/playbooks/mr-review.md` and `lessons/workflow.md`.
 2. **R0. Preflight** (playbook → Preflight):
-   - VPN: follow `flow/playbooks/vpn.md` first. It connects with `vpn up` if GitLab isn't reachable.
+   - VPN: follow `flow/playbooks/vpn.md` first. It connects with `setup/vpn/vpn up` if GitLab isn't reachable.
    - glab is installed and logged in to the GitLab host, and you have the username. If not, stop and point the user to `setup/mcp.md` → GitLab CLI.
    - The host's **code-review command** is available (playbook → Host code review). If it isn't installed or enabled, **stop and ask the user to install it first**, with the install step for this host. Continue only when it's available, or if the user explicitly says to review without it (record that in `status.md` → Notes).
 3. With an MR url: skip R1 and use that MR. With a key: skip R1 and go to R2 for that key.

@@ -21,7 +21,7 @@
 - frontend: <closio-web-v2 | none>
 
 ## Network
-<!-- VPN preflight (flow/playbooks/vpn.md), one line per check: <date time>: reachable | connected by vpn up (<iface>) | connected via FortiClient | offline (user chose) | failed: <reason> -->
+<!-- VPN preflight (flow/playbooks/vpn.md), one line per check: <date time>: reachable | connected by vpn up | connected by the user | offline (user chose) | failed: <reason> -->
 
 ## Repo sync
 | Repo | Previous branch | Dev branch | Commit before → after | Stash | Result | Time |

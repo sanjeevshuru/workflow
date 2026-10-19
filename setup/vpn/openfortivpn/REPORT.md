@@ -48,11 +48,11 @@ Security choices:
 | File | Purpose |
 |---|---|
 | `setup/vpn/vpn` | user command: `up`, `down`, `status`, `check`, `log`. Exit codes 0/1/2/3/64 |
-| `setup/vpn/install.sh` | one-time admin install, `--uninstall`, and `--root` staging for tests |
+| `setup/vpn/openfortivpn/install.sh` | one-time admin install, `--uninstall`, and `--root` staging for tests |
 | `setup/vpn/ip-up`, `ip-down` | split DNS through `/etc/resolver` |
-| `setup/vpn/certs/godaddy-g2-intermediate.pem` | missing intermediate (public; SHA-256 `97:3A:41:…:1A:A6`) |
-| `setup/vpn/tests/run-tests.sh` | test suite (no root needed) |
-| `setup/vpn.md` | setup guide and troubleshooting |
+| `setup/vpn/openfortivpn/certs/godaddy-g2-intermediate.pem` | missing intermediate (public; SHA-256 `97:3A:41:…:1A:A6`) |
+| `setup/vpn/openfortivpn/tests/run-tests.sh` | test suite (no root needed) |
+| `setup/vpn/openfortivpn/README.md` | setup guide and troubleshooting |
 | `flow/playbooks/vpn.md` | the workflow's preflight: check → `vpn up` → ask → record |
 
 Workflow wiring:
@@ -66,7 +66,7 @@ Workflow wiring:
   - `run-ticket` and `review-mr` skills: a Bash timeout of 200 s for `vpn up`
 
 ## Test results
-`LIVE=1 setup/vpn/tests/run-tests.sh` → **82 passed, 0 failed**.
+`LIVE=1 setup/vpn/openfortivpn/tests/run-tests.sh` → **82 passed, 0 failed**.
 
 | Area | Tests | Covers |
 |---|---|---|
@@ -88,7 +88,7 @@ These need the admin install and a real Microsoft sign-in, so they couldn't be r
 4. `vpn down` restores routes and DNS, and the internet still works.
 5. How long the gateway session lasts before a new sign-in is needed.
 
-Live acceptance checklist, after IT runs `sudo setup/vpn/install.sh --user <you>`:
+Live acceptance checklist, after IT runs `sudo setup/vpn/openfortivpn/install.sh --user <you>`:
 - [ ] FortiClient VPN disconnected
 - [ ] `vpn up`: the browser opens, the sign-in completes, exit 0
 - [ ] `vpn status` shows `connected (ppp0)`, and `jcvs.japfacomfeed.co.id: reachable`

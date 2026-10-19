@@ -18,5 +18,5 @@ Claude Code specifics:
   - step 01 claim: `getTransitionsForJiraIssue` + `transitionJiraIssue` to "In Development" if the ticket is in To Do; if unassigned, `atlassianUserInfo` for your account id, then `editJiraIssue` with only `assignee`
   - step 03: `transitionJiraIssue` to "Code Review" after a successful push
 - Figma: whichever Figma MCP is connected (`figma` or `plugin:figma:figma`).
-- VPN preflight (`flow/playbooks/vpn.md`): run `vpn up` in the foreground with a Bash `timeout` of 200000 ms. The default 120 s is shorter than its sign-in wait.
+- VPN preflight (`flow/playbooks/vpn.md`): run `setup/vpn/vpn up` in the foreground with a Bash `timeout` of 200000 ms. The default 120 s is shorter than its sign-in wait.
 - Step 03: start local services and the web dev server with Bash `run_in_background`, and stop them when done. Browser tests use the `playwright` MCP, headed; the user logs in themselves.

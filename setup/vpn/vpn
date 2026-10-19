@@ -1,99 +1,77 @@
 #!/bin/bash
-# vpn: start, stop and check the FortiGate SSL VPN (SAML sign-in) through openfortivpn.
+# vpn: connect the company VPN through FortiClient, with nobody clicking.
 #
-#   vpn up       connect; opens the Microsoft sign-in in the browser (no typing if already signed in)
-#   vpn down     disconnect
-#   vpn status   connected | connecting | disconnected   (exit 0 only when the tunnel is up)
-#   vpn check    is the internal probe host reachable, through any VPN   (exit 0 when reachable)
-#   vpn log      last 40 lines of the VPN log
+#   vpn up           connect: VPN Connect.app clicks SAML Login in FortiClient; the Microsoft
+#                    sign-in then completes in the browser (by itself if you're already signed in)
+#   vpn down         disconnect (clicks Disconnect)
+#   vpn check        is the GitLab host reachable? (no UI; exit 0 when reachable)
+#   vpn status       FortiClient's state and GitLab reachability
+#   vpn setup-check  is VPN Connect.app built and allowed under Accessibility?
+#   vpn dump         list FortiClient's on-screen labels (to adapt to a new FortiClient version)
 #
-# Installed to /usr/local/bin/vpn by setup/vpn/install.sh. The only root actions are
-# `launchctl kickstart` / `launchctl kill SIGTERM` of the local.fortivpn daemon, which the
-# sudoers rule allows without a password and nothing else.
+# Runs straight from the repo (setup/vpn/vpn); no admin, no install beyond the applet
+# (setup/vpn/install-applet.sh). Exit codes: 0 ok · 1 failed / not reachable ·
+# 2 FortiClient connected but GitLab unreachable · 3 applet missing or not allowed · 64 usage.
 #
-# Exit codes: 0 ok · 1 failed / not connected · 2 tunnel up but probe host unreachable (DNS)
-#             3 not installed or not allowed · 64 usage
-#
-# The FORTIVPN_* variables exist for the test suite (setup/vpn/tests/run-tests.sh). This script
-# runs as the user, so overriding them never grants anything the sudoers rule doesn't.
+# The FORTIVPN_* variables exist for the test suite (setup/vpn/tests/run-tests.sh).
 
 set -u
 
-LABEL="local.fortivpn"
-CONF="${FORTIVPN_CONF:-/etc/openfortivpn/work.conf}"
-LOG="${FORTIVPN_LOG:-/var/log/fortivpn.log}"
+APP="${FORTIVPN_APPLET:-$HOME/Applications/VPN Connect.app}"
+STATE="${FORTIVPN_STATE:-$HOME/Library/Caches/vpn-connect}"
 PROBE_HOST="${FORTIVPN_PROBE_HOST:-jcvs.japfacomfeed.co.id}"
 PROBE_PORT="${FORTIVPN_PROBE_PORT:-443}"
 TIMEOUT="${FORTIVPN_TIMEOUT:-180}"
-START_WAIT="${FORTIVPN_START_WAIT:-15}"
+APPLET_WAIT="${FORTIVPN_APPLET_WAIT:-45}"
+DOWN_WAIT="${FORTIVPN_DOWN_WAIT:-20}"
 PATH="${FORTIVPN_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
 export PATH
 
 say() { printf 'vpn: %s\n' "$*"; }
 err() { printf 'vpn: %s\n' "$*" >&2; }
 
-running() { pgrep -x openfortivpn >/dev/null 2>&1; }
-
-ppp_iface() { ifconfig -l 2>/dev/null | tr ' ' '\n' | grep '^ppp' | head -n 1; }
-
 reachable() { nc -z -G 5 "$PROBE_HOST" "$PROBE_PORT" >/dev/null 2>&1; }
 
-state() {
-  if running; then
-    if [ -n "$(ppp_iface)" ]; then echo connected; else echo connecting; fi
-  else
-    echo disconnected
-  fi
-}
-
-log_size() {
-  if [ -r "$LOG" ]; then wc -c <"$LOG" | tr -d ' '; else echo 0; fi
-}
-
-# Log text written after byte offset $1.
-log_since() { [ -r "$LOG" ] && tail -c +"$(($1 + 1))" "$LOG" 2>/dev/null; }
-
-# Byte offset where the latest session's SAML wait started (used when re-attaching).
-last_session_offset() {
-  [ -r "$LOG" ] || { echo 0; return; }
-  local off
-  off=$(grep -b 'Listening for SAML login' "$LOG" 2>/dev/null | tail -n 1 | cut -d: -f1)
-  echo "${off:-0}"
-}
-
-conf_value() { sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$CONF" 2>/dev/null | tail -n 1; }
-
-fallback_saml_url() {
-  local host port realm
-  host=$(conf_value host); port=$(conf_value port); realm=$(conf_value realm)
-  [ -n "$host" ] || return 1
-  printf 'https://%s:%s/remote/saml/start?redirect=1%s\n' "$host" "${port:-443}" "${realm:+&realm=$realm}"
-}
-
-show_log_tail() {
-  if [ -r "$LOG" ]; then
-    err "last log lines ($LOG):"
-    log_since "$1" | tail -n 20 | sed 's/^/    /' >&2
-  else
-    err "log $LOG is not readable"
-  fi
-}
-
-priv() { sudo -n launchctl "$@" "system/$LABEL"; }
-
-stop_daemon() {
-  priv kill SIGTERM >/dev/null 2>&1 || return 1
+wait_until() { # wait_until <seconds> <reachable|unreachable>
   local i=0
-  while running && [ "$i" -lt 15 ]; do sleep 1; i=$((i + 1)); done
-  ! running
+  while [ "$i" -lt "$1" ]; do
+    if [ "$2" = reachable ]; then reachable && return 0; else reachable || return 0; fi
+    sleep 1; i=$((i + 1))
+  done
+  return 1
 }
 
-cmd_status() {
-  local s iface
-  s=$(state); iface=$(ppp_iface)
-  if [ "$s" = connected ]; then say "connected (${iface})"; else say "$s"; fi
-  if reachable; then say "$PROBE_HOST: reachable"; else say "$PROBE_HOST: unreachable"; fi
-  [ "$s" = connected ]
+# Runs one applet request and prints its result. Exit 3 if the applet is missing or not allowed.
+applet() {
+  local req="$1" i=0 out
+  if [ ! -d "$APP" ]; then
+    err "$APP is missing: run setup/vpn/install-applet.sh (once, no admin)"
+    return 3
+  fi
+  mkdir -p "$STATE"
+  if ! mkdir "$STATE/lock" 2>/dev/null; then
+    # A lock older than 2 minutes is left over from a crash.
+    if [ -n "$(find "$STATE/lock" -maxdepth 0 -mmin +2 2>/dev/null)" ]; then rmdir "$STATE/lock" 2>/dev/null; fi
+    mkdir "$STATE/lock" 2>/dev/null || { err "another vpn command is running"; return 1; }
+  fi
+  rm -f "$STATE/result"
+  printf '%s\n' "$req" >"$STATE/request"
+  if ! open -g "$APP" >/dev/null 2>&1; then
+    rmdir "$STATE/lock"; err "could not launch $APP"; return 1
+  fi
+  while [ ! -s "$STATE/result" ] && [ "$i" -lt $((APPLET_WAIT * 4)) ]; do sleep 0.25; i=$((i + 1)); done
+  rm -f "$STATE/request"; rmdir "$STATE/lock" 2>/dev/null
+  if [ ! -s "$STATE/result" ]; then
+    err "VPN Connect.app didn't answer within ${APPLET_WAIT}s"
+    return 1
+  fi
+  out=$(cat "$STATE/result")
+  printf '%s\n' "$out"
+  case "$out" in
+    "error: not allowed"*) return 3 ;;
+    error:*) return 1 ;;
+  esac
+  return 0
 }
 
 cmd_check() {
@@ -102,87 +80,60 @@ cmd_check() {
 }
 
 cmd_up() {
-  local s offset url i
-  s=$(state)
-  if [ "$s" = connected ]; then say "already connected ($(ppp_iface))"; return 0; fi
-  if [ "$s" = disconnected ] && reachable; then
-    say "$PROBE_HOST is already reachable through another VPN (FortiClient?); not starting openfortivpn"
-    return 0
+  local out rc
+  if reachable; then say "already connected: $PROBE_HOST reachable"; return 0; fi
+  out=$(applet connect); rc=$?
+  [ -n "$out" ] && printf '%s\n' "$out" | sed 's/^/vpn: FortiClient: /'
+  if [ "$rc" -ne 0 ]; then
+    [ "$rc" -eq 3 ] && err "one-time setup: setup/vpn/install-applet.sh, then allow 'VPN Connect' under Accessibility"
+    return "$rc"
   fi
-  [ -r "$LOG" ] || err "warning: cannot read $LOG; progress can't be followed (re-run setup/vpn/install.sh)"
-
-  if [ "$s" = connecting ]; then
-    say "a connection is already waiting for the sign-in; reopening the browser"
-    offset=$(last_session_offset)
-  else
-    offset=$(log_size)
-    if ! priv kickstart >/dev/null 2>&1; then
-      err "not allowed to start the VPN daemon without a password."
-      err "an admin has to run setup/vpn/install.sh once (see setup/vpn.md)."
-      return 3
-    fi
-  fi
-
-  # Wait for openfortivpn to print its SAML URL (it is listening on 127.0.0.1:8020 by then).
-  url=""; i=0
-  while [ "$i" -lt "$START_WAIT" ]; do
-    url=$(log_since "$offset" | sed -n 's/.*Using SAML authentication URL //p' | tail -n 1)
-    [ -n "$url" ] && break
-    if ! running && [ "$i" -ge 2 ]; then
-      err "openfortivpn exited before the sign-in started"
-      show_log_tail "$offset"; return 1
-    fi
-    sleep 1; i=$((i + 1))
-  done
-  if [ -z "$url" ]; then
-    url=$(fallback_saml_url) || { err "no SAML URL in the log and no host in $CONF"; stop_daemon; return 1; }
-    err "warning: SAML URL not seen in the log; using $url"
-  fi
-
-  open "$url" >/dev/null 2>&1 || err "could not open the browser; open this URL yourself: $url"
+  case "$out" in
+    *"already connected"*)
+      if wait_until 10 reachable; then say "connected: $PROBE_HOST reachable"; return 0; fi
+      err "FortiClient says connected but $PROBE_HOST is unreachable (DNS or routes; see setup/vpn.md → Troubleshooting)"
+      return 2 ;;
+  esac
   say "waiting for the Microsoft sign-in in your browser (up to ${TIMEOUT}s)"
-
-  i=0
-  while :; do
-    if log_since "$offset" | grep -q 'Tunnel is up and running'; then break; fi
-    if ! running; then
-      err "openfortivpn stopped before the tunnel came up"
-      show_log_tail "$offset"; return 1
-    fi
-    if [ "$i" -ge "$TIMEOUT" ]; then
-      err "timed out after ${TIMEOUT}s waiting for the tunnel; stopping"
-      show_log_tail "$offset"; stop_daemon; return 1
-    fi
-    sleep 1; i=$((i + 1))
-  done
-
-  i=0
-  while [ "$i" -lt 10 ]; do
-    if reachable; then say "connected ($(ppp_iface)); $PROBE_HOST reachable"; return 0; fi
-    sleep 1; i=$((i + 1))
-  done
-  err "tunnel is up ($(ppp_iface)) but $PROBE_HOST is unreachable: check DNS (setup/vpn.md → Troubleshooting)"
-  return 2
+  if wait_until "$TIMEOUT" reachable; then say "connected: $PROBE_HOST reachable"; return 0; fi
+  err "not connected after ${TIMEOUT}s: finish the sign-in in the browser, or check FortiClient"
+  return 1
 }
 
 cmd_down() {
-  if ! running; then say "already disconnected"; return 0; fi
-  if ! stop_daemon; then
-    err "could not stop openfortivpn (was it started outside 'vpn up'?)"
-    return 1
-  fi
-  say "disconnected"
+  local out rc
+  out=$(applet disconnect); rc=$?
+  [ -n "$out" ] && printf '%s\n' "$out" | sed 's/^/vpn: FortiClient: /'
+  [ "$rc" -eq 0 ] || return "$rc"
+  if wait_until "$DOWN_WAIT" unreachable; then say "disconnected"; return 0; fi
+  err "$PROBE_HOST is still reachable (another VPN or network path?)"
+  return 1
 }
 
-cmd_log() {
-  if [ -r "$LOG" ]; then tail -n 40 "$LOG"; else err "log $LOG is not readable"; return 1; fi
+cmd_status() {
+  local out rc
+  out=$(applet status); rc=$?
+  [ -n "$out" ] && printf '%s\n' "$out" | sed 's/^/vpn: FortiClient: /'
+  if reachable; then say "$PROBE_HOST: reachable"; return 0; fi
+  say "$PROBE_HOST: unreachable"
+  [ "$rc" -eq 3 ] && return 3
+  return 1
+}
+
+cmd_setup_check() {
+  local out rc
+  out=$(applet check); rc=$?
+  [ -n "$out" ] && printf '%s\n' "$out" | sed 's/^/vpn: /'
+  if [ "$rc" -eq 0 ]; then say "setup OK"; fi
+  return "$rc"
 }
 
 case "${1:-}" in
   up) cmd_up ;;
   down) cmd_down ;;
-  status) cmd_status ;;
   check) cmd_check ;;
-  log) cmd_log ;;
-  *) echo "usage: vpn up|down|status|check|log" >&2; exit 64 ;;
+  status) cmd_status ;;
+  setup-check) cmd_setup_check ;;
+  dump) applet dump ;;
+  *) echo "usage: vpn up|down|check|status|setup-check|dump" >&2; exit 64 ;;
 esac

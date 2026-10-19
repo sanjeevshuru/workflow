@@ -5,29 +5,33 @@ GitLab (`jcvs.japfacomfeed.co.id`) and the internal dev hosts are only reachable
 - **R0** of an MR review (`flow/REVIEW.md`)
 - before a remote git action, when that action fails with a network error: repo-sync fetch, step 03 push, MR review fetch. The tunnel can drop during a long run or while the laptop sleeps.
 
-The VPN signs in with Microsoft SSO (SAML) in the browser, so it can't be fully headless. `vpn up` opens the sign-in. If the browser already has a Microsoft session, the sign-in finishes by itself; otherwise the user completes it there. Machine setup: `setup/vpn.md`.
+`setup/vpn/vpn up` connects without anyone clicking:
+- **VPN Connect.app** clicks SAML Login in FortiClient.
+- The Microsoft sign-in then completes in the browser, by itself when the browser already has a Microsoft session.
+- Machine setup, once per Mac, needs no admin: `setup/vpn.md`.
 
 ## Allowed commands
-- `vpn check`, `vpn status`, `vpn log`: read-only
-- `vpn up`: connects. It's a local network action, not a write to a repo or Jira, so any step may run it.
-- Never `vpn down`, unless the user asks. The user may need the tunnel for other work.
-- If the `vpn` command isn't installed (another machine, another OS), use `nc -z -G 5 jcvs.japfacomfeed.co.id 443` as the check, and ask the user to connect in FortiClient instead of running `vpn up`.
+Paths are relative to this workflow folder.
+- `setup/vpn/vpn check`: read-only, no UI
+- `setup/vpn/vpn status`, `setup/vpn/vpn setup-check`: read-only
+- `setup/vpn/vpn up`: connects. It's a local network action, not a write to a repo or Jira, so any step may run it.
+- Never `setup/vpn/vpn down`, unless the user asks. The user may need the tunnel for other work.
 
 ## Procedure
-1. **Check**: `vpn check`. Exit 0 means GitLab is reachable, through this tunnel or any other VPN (FortiClient). Record `reachable` and continue. Say nothing to the user.
-2. **Connect**: `vpn up`, with a command timeout of at least 200 s. Before running it, tell the user in one line: "Connecting the VPN. If a Microsoft sign-in opens in your browser, complete it there."
+1. **Check**: `setup/vpn/vpn check`. Exit 0 means GitLab is reachable. Record `reachable` and continue. Say nothing to the user.
+2. **Connect**: run `setup/vpn/vpn up` in the foreground, with a command timeout of at least 200 s. Before running it, tell the user in one line: "Connecting the VPN through FortiClient. If Microsoft asks you to sign in, do it in the browser tab that opens."
    | Exit | Meaning | Do |
    |---|---|---|
    | 0 | connected and GitLab reachable | record `connected by vpn up`, continue |
-   | 1 | sign-in failed, timed out or openfortivpn stopped | show the log lines it printed, then ask (step 3) |
-   | 2 | tunnel up, but GitLab doesn't resolve or answer | show the message, point to `setup/vpn.md` → Troubleshooting → DNS, then ask (step 3) |
-   | 3 | not installed, or the sudoers rule is missing | say `setup/vpn.md` needs an admin once, then ask (step 3) |
+   | 1 | the sign-in didn't finish in time, or FortiClient's window wasn't as expected | show the lines it printed, then ask (step 3) |
+   | 2 | FortiClient connected, but GitLab doesn't answer | show the message (DNS or routes: IT), then ask (step 3) |
+   | 3 | VPN Connect.app isn't built or isn't allowed under Accessibility | point to `setup/vpn.md` → Setup (one time, no admin), then ask (step 3) |
 3. **Ask** when it couldn't connect:
    - **Retry**: run this procedure again.
-   - **I've connected another way** (FortiClient): run `vpn check`, then continue.
+   - **I've connected myself**: run `setup/vpn/vpn check`, then continue.
    - **Continue offline**: only steps that don't need GitLab can continue. Repo sync records `not pulled: fetch failed` (`flow/playbooks/repo-sync.md`). A push or MR review can't continue offline.
    - **Abort** the run.
-4. **Record** one line in `status.md` → Network (or `reviews/<KEY>/status.md` → Notes): result, how it was reached, time. Example: `2026-10-19 10:42: connected by vpn up (ppp0)`.
+4. **Record** one line in `status.md` → Network (or `reviews/<KEY>/status.md` → Notes): result, how it was reached, time. Example: `2026-10-19 10:42: connected by vpn up`.
 
 ## Retry once on a network error
 When `git fetch`, `git push`, `git ls-remote` or `glab` fails with a network error (`Could not resolve host`, `Connection timed out`, `Network is unreachable`, `Operation timed out`):

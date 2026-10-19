@@ -1,5 +1,5 @@
 #!/bin/sh
-# fortivpn-managed: installed to /etc/ppp/ip-up by setup/vpn/install.sh
+# fortivpn-managed: installed to /etc/ppp/ip-up by setup/vpn/openfortivpn/install.sh
 #
 # pppd runs this as root when a PPP link comes up:
 #   $1 interface  $2 tty  $3 speed  $4 local IP  $5 remote IP  $6 ipparam

@@ -34,7 +34,7 @@ Pipe read output through `jq` to keep only the fields you need. Never dump whole
 
 ## Preflight
 1. `glab --version`. If it's missing, stop: see `setup/mcp.md` → GitLab CLI.
-2. `glab auth status --hostname jcvs.japfacomfeed.co.id`. If it's not logged in, stop and point to the setup. If the host can't be resolved or times out, run `flow/playbooks/vpn.md` (it connects with `vpn up`, or asks the user), then retry once.
+2. `glab auth status --hostname jcvs.japfacomfeed.co.id`. If it's not logged in, stop and point to the setup. If the host can't be resolved or times out, run `flow/playbooks/vpn.md` (it connects with `setup/vpn/vpn up`, or asks the user), then retry once.
 3. Username: `glab api --hostname jcvs.japfacomfeed.co.id "user" | jq -r .username`. Keep it in memory only.
 4. The host code-review command is available (**Host code review** → Check). If it isn't, stop and ask the user to install it first, with the install step for this host.
 

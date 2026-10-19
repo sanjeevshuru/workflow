@@ -146,7 +146,7 @@ When the author pushes fixes, run it again. It checks what was fixed and only ad
 3. Connect Jira, Figma and Playwright in your AI tool (`setup/mcp.md`).
 4. For MR review: `brew install glab`, then on the VPN run `glab auth login --hostname jcvs.japfacomfeed.co.id` (`setup/mcp.md` → GitLab CLI).
 5. Put the BRD, PRD and tech specs in `sources/` and list them in `sources/INDEX.md`.
-6. macOS: let runs connect the VPN by themselves (`setup/vpn.md`). Run `setup/vpn/install-applet.sh`, then allow **VPN Connect** under Privacy & Security → Accessibility.
+6. macOS: let runs connect the VPN by themselves (`setup/vpn.md`). Allow your editor or terminal under Privacy & Security → Accessibility (or build the tighter `VPN Connect.app` with `setup/vpn/install-applet.sh`), then run `setup/vpn/vpn setup-check`.
 
 For the backend API test, it will ask you to set these in your terminal: `AIFLOW_WS2_CLIENT_ID`, `AIFLOW_WS2_CLIENT_SECRET`, `AIFLOW_WS1_SESSION_COOKIE`, `AIFLOW_PARTNER_ID` and `AIFLOW_USER_ID`. They're never saved to files (`config/postman.md`).
 

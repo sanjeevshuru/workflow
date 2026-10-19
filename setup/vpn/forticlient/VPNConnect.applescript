@@ -1,27 +1,36 @@
 -- VPN Connect: clicks FortiClient's SAML Login / Disconnect for the `vpn` command, so nobody has to.
 --
 -- macOS only lets an app drive another app's window when the user has allowed it under
--- Privacy & Security -> Accessibility. This applet is that app: it gets the permission, not the
--- editor or terminal. It only ever touches the FortiClient process.
---
--- Protocol (setup/vpn/vpn writes and reads these; nothing else is accepted):
---   ~/Library/Caches/vpn-connect/request   one word: connect | disconnect | status | dump | check
---   ~/Library/Caches/vpn-connect/result    first line: ok: … | error: …, then details
---
--- Built by setup/vpn/install-applet.sh into ~/Applications/VPN Connect.app.
+-- Privacy & Security -> Accessibility. Two ways to run this script (setup/vpn/vpn picks one):
+--   1. As ~/Applications/VPN Connect.app (setup/vpn/install-applet.sh): only that app needs the
+--      permission. Protocol, since an applet gets no arguments:
+--        ~/Library/Caches/vpn-connect/request   one word: connect | disconnect | status | dump | check
+--        ~/Library/Caches/vpn-connect/result    first line: ok: … | error: …, then details
+--   2. Directly: osascript VPNConnect.applescript <word>. The result goes to stdout, and the app
+--      that started osascript (Terminal, VS Code, …) needs the permission.
+-- Either way it only ever touches the FortiClient process and only accepts the five words above.
+-- Adapted with ideas from a teammate's fortiauto script (refuse ambiguous clicks).
 
 property connectLabels : {"SAML Login", "Connect"}
 property disconnectLabels : {"Disconnect"}
-property connectedTexts : {"VPN Connected", "Connected"}
 property navLabels : {"Remote Access"}
 
-on run
-	set stateDir to (POSIX path of (path to home folder)) & "Library/Caches/vpn-connect/"
-	do shell script "mkdir -p " & quoted form of stateDir
+on run argv
+	set direct to false
 	set req to ""
 	try
-		set req to do shell script "f=" & quoted form of (stateDir & "request") & "; cat \"$f\" 2>/dev/null; rm -f \"$f\""
+		if (count of argv) > 0 then
+			set direct to true
+			set req to item 1 of argv
+		end if
 	end try
+	set stateDir to (POSIX path of (path to home folder)) & "Library/Caches/vpn-connect/"
+	if not direct then
+		do shell script "mkdir -p " & quoted form of stateDir
+		try
+			set req to do shell script "f=" & quoted form of (stateDir & "request") & "; cat \"$f\" 2>/dev/null; rm -f \"$f\""
+		end try
+	end if
 	set res to "error: no request"
 	try
 		if req is "connect" then
@@ -38,12 +47,18 @@ on run
 			set res to "error: unknown request " & req
 		end if
 	on error msg number n
-		if n is -1719 or n is -25211 or n is -1743 then
-			set res to "error: not allowed (" & n & "): allow 'VPN Connect' in System Settings > Privacy & Security > Accessibility (and Automation > System Events)"
+		if n is -1719 or n is -25211 or n is -1743 or msg contains "assistive access" or msg contains "not allowed to send" then
+			if direct then
+				set who to "the app running this command (Terminal, VS Code, …)"
+			else
+				set who to "'VPN Connect'"
+			end if
+			set res to "error: not allowed (" & n & "): allow " & who & " in System Settings > Privacy & Security > Accessibility (and Automation > System Events)"
 		else
 			set res to "error: " & n & " " & msg
 		end if
 	end try
+	if direct then return res
 	set tmp to stateDir & "result.tmp"
 	do shell script "printf '%s\\n' " & quoted form of res & " > " & quoted form of tmp & " && mv " & quoted form of tmp & " " & quoted form of (stateDir & "result")
 end run
@@ -56,10 +71,19 @@ on fortiWindow()
 		repeat 40 times
 			if exists process "FortiClient" then
 				tell process "FortiClient"
-					try
-						set value of attribute "AXManualAccessibility" to true
-					end try
-					if (count of windows) > 0 then return window 1
+					if (count of windows) > 0 then
+						-- FortiClient's tree goes stale in the background (it kept showing "VPN Connected"
+						-- 36 s after a disconnect). Turning Electron's accessibility off and on rebuilds it.
+						try
+							set value of attribute "AXManualAccessibility" to false
+							delay 0.3
+						end try
+						try
+							set value of attribute "AXManualAccessibility" to true
+						end try
+						delay 1
+						return window 1
+					end if
 				end tell
 			end if
 			delay 0.25
@@ -98,9 +122,38 @@ on roleOf(e)
 	end tell
 end roleOf
 
+-- Every element under w, walked level by level. `entire contents` doesn't descend into Electron's
+-- AXWebArea (it returns nothing for FortiClient 7.4), so the tree is walked by hand.
 on allElements(w)
-	tell application "System Events" to return entire contents of w
+	return my collect(w, 0, {})
 end allElements
+
+on collect(e, depth, acc)
+	if depth > 20 then return acc
+	set kids to {}
+	tell application "System Events"
+		try
+			set kids to UI elements of e
+		end try
+	end tell
+	repeat with k in kids
+		set end of acc to (contents of k)
+		set acc to my collect(contents of k, depth + 1, acc)
+	end repeat
+	return acc
+end collect
+
+-- Every element of the given role whose label equals the label.
+on allByLabel(w, wantedRole, wanted)
+	set found to {}
+	repeat with e in my allElements(w)
+		if my roleOf(e) is wantedRole then
+			set l to my labelOf(e)
+			if l is wanted or l starts with (wanted & " |") then set end of found to (contents of e)
+		end if
+	end repeat
+	return found
+end allByLabel
 
 -- First element of the given role whose label equals one of the labels (in the order given).
 on findByLabel(w, wantedRole, labels)
@@ -115,17 +168,6 @@ on findByLabel(w, wantedRole, labels)
 	end repeat
 	return missing value
 end findByLabel
-
-on hasText(w, texts)
-	set els to my allElements(w)
-	repeat with e in els
-		set l to my labelOf(e)
-		repeat with t in texts
-			if l is (contents of t) or l starts with ((contents of t) & " |") then return true
-		end repeat
-	end repeat
-	return false
-end hasText
 
 on press(e)
 	tell application "System Events"
@@ -173,6 +215,9 @@ on doConnect()
 	end if
 	if b is missing value then error "no SAML Login / Connect button found (run: vpn dump)" number 1002
 	set l to my labelOf(b)
+	-- Never guess: refuse when the chosen label matches more than one button.
+	set same to my allByLabel(w, "AXButton", l)
+	if (count of same) > 1 then error "found " & (count of same) & " '" & l & "' buttons; refusing an ambiguous click (run: vpn dump)" number 1003
 	my press(b)
 	return "ok: clicked " & l
 end doConnect
@@ -181,8 +226,9 @@ on doDisconnect()
 	set w to my fortiWindow()
 	set b to my findByLabel(w, "AXButton", disconnectLabels)
 	if b is missing value then return "ok: already disconnected"
+	set l to my labelOf(b)
 	my press(b)
-	return "ok: clicked " & my labelOf(b)
+	return "ok: clicked " & l
 end doDisconnect
 
 -- Every element with a label: role, then label. Used to adapt the labels above to a FortiClient version.

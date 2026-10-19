@@ -1,23 +1,31 @@
 #!/bin/bash
 # vpn: connect the company VPN through FortiClient, with nobody clicking.
 #
-#   vpn up           connect: VPN Connect.app clicks SAML Login in FortiClient; the Microsoft
-#                    sign-in then completes in the browser (by itself if you're already signed in)
+#   vpn up           connect: a script clicks Connect in FortiClient; the Microsoft sign-in then
+#                    completes in the browser (by itself if you're already signed in)
 #   vpn down         disconnect (clicks Disconnect)
 #   vpn check        is the GitLab host reachable? (no UI; exit 0 when reachable)
 #   vpn status       FortiClient's state and GitLab reachability
-#   vpn setup-check  is VPN Connect.app built and allowed under Accessibility?
+#   vpn setup-check  is the clicking allowed under Accessibility?
 #   vpn dump         list FortiClient's on-screen labels (to adapt to a new FortiClient version)
 #
-# Runs straight from the repo (setup/vpn/vpn); no admin, no install beyond the applet
-# (setup/vpn/install-applet.sh). Exit codes: 0 ok · 1 failed / not reachable ·
-# 2 FortiClient connected but GitLab unreachable · 3 applet missing or not allowed · 64 usage.
+# Runs straight from the repo (setup/vpn/vpn); no admin. The clicking is done by
+# forticlient/VPNConnect.applescript, run one of two ways:
+#   - as ~/Applications/VPN Connect.app, when built (setup/vpn/install-applet.sh): only that app
+#     needs the Accessibility permission
+#   - otherwise directly with osascript: the app running this command (Terminal, VS Code, …) needs it
+# FORTIVPN_RUNNER=applet|osascript forces one.
+# Exit codes: 0 ok · 1 failed / not reachable · 2 FortiClient connected but GitLab unreachable ·
+# 3 not allowed under Accessibility (or the forced applet is missing) · 64 usage.
 #
 # The FORTIVPN_* variables exist for the test suite (setup/vpn/tests/run-tests.sh).
 
 set -u
 
+HERE=$(cd "$(dirname "$0")" && pwd)
 APP="${FORTIVPN_APPLET:-$HOME/Applications/VPN Connect.app}"
+SCRIPT="${FORTIVPN_SCRIPT:-$HERE/forticlient/VPNConnect.applescript}"
+RUNNER="${FORTIVPN_RUNNER:-}"
 STATE="${FORTIVPN_STATE:-$HOME/Library/Caches/vpn-connect}"
 PROBE_HOST="${FORTIVPN_PROBE_HOST:-jcvs.japfacomfeed.co.id}"
 PROBE_PORT="${FORTIVPN_PROBE_PORT:-443}"
@@ -41,10 +49,19 @@ wait_until() { # wait_until <seconds> <reachable|unreachable>
   return 1
 }
 
-# Runs one applet request and prints its result. Exit 3 if the applet is missing or not allowed.
+runner() {
+  if [ -n "$RUNNER" ]; then echo "$RUNNER"
+  elif [ -d "$APP" ]; then echo applet
+  else echo osascript
+  fi
+}
+
+# Runs one request (connect|disconnect|status|check|dump) and prints its result.
+# Exit 3 if not allowed under Accessibility, 1 on any other failure.
 applet() {
-  local req="$1" i=0 out
-  if [ ! -d "$APP" ]; then
+  local req="$1" i=0 out how pid=""
+  how=$(runner)
+  if [ "$how" = applet ] && [ ! -d "$APP" ]; then
     err "$APP is missing: run setup/vpn/install-applet.sh (once, no admin)"
     return 3
   fi
@@ -55,21 +72,30 @@ applet() {
     mkdir "$STATE/lock" 2>/dev/null || { err "another vpn command is running"; return 1; }
   fi
   rm -f "$STATE/result"
-  printf '%s\n' "$req" >"$STATE/request"
-  if ! open -g "$APP" >/dev/null 2>&1; then
-    rmdir "$STATE/lock"; err "could not launch $APP"; return 1
+  if [ "$how" = applet ]; then
+    printf '%s\n' "$req" >"$STATE/request"
+    if ! open -g "$APP" >/dev/null 2>&1; then
+      rm -f "$STATE/request"; rmdir "$STATE/lock"; err "could not launch $APP"; return 1
+    fi
+  else
+    # Detached from our stdout, or a hung osascript would keep the caller's $(…) waiting.
+    ( osascript "$SCRIPT" "$req" >"$STATE/result.tmp" 2>&1; mv "$STATE/result.tmp" "$STATE/result" ) >/dev/null 2>&1 &
+    pid=$!
   fi
   while [ ! -s "$STATE/result" ] && [ "$i" -lt $((APPLET_WAIT * 4)) ]; do sleep 0.25; i=$((i + 1)); done
   rm -f "$STATE/request"; rmdir "$STATE/lock" 2>/dev/null
+  if [ -n "${pid:-}" ] && [ ! -s "$STATE/result" ]; then
+    pkill -P "$pid" 2>/dev/null; kill "$pid" 2>/dev/null
+  fi
   if [ ! -s "$STATE/result" ]; then
-    err "VPN Connect.app didn't answer within ${APPLET_WAIT}s"
+    err "the FortiClient script didn't answer within ${APPLET_WAIT}s ($how)"
     return 1
   fi
   out=$(cat "$STATE/result")
   printf '%s\n' "$out"
   case "$out" in
-    "error: not allowed"*) return 3 ;;
-    error:*) return 1 ;;
+    "error: not allowed"*|*"assistive access"*) return 3 ;;
+    error:*|*"execution error"*) return 1 ;;
   esac
   return 0
 }
@@ -85,7 +111,7 @@ cmd_up() {
   out=$(applet connect); rc=$?
   [ -n "$out" ] && printf '%s\n' "$out" | sed 's/^/vpn: FortiClient: /'
   if [ "$rc" -ne 0 ]; then
-    [ "$rc" -eq 3 ] && err "one-time setup: setup/vpn/install-applet.sh, then allow 'VPN Connect' under Accessibility"
+    [ "$rc" -eq 3 ] && err "one-time setup: allow $( [ "$(runner)" = applet ] && echo "'VPN Connect'" || echo "this app (Terminal / VS Code)") under Privacy & Security > Accessibility (setup/vpn.md)"
     return "$rc"
   fi
   case "$out" in

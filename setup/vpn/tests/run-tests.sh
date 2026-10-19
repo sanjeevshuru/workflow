@@ -54,6 +54,23 @@ case "$sc:$req" in
 esac
 EOF
 
+# Fake osascript: the direct runner (`osascript VPNConnect.applescript <word>`), same scenarios, stdout.
+# Also guarantees the tests never drive the real FortiClient.
+cat >"$F/osascript" <<'EOF'
+#!/bin/bash
+echo "$*" >>"$SIM/osascript-calls"
+[ "$1" = "$FORTIVPN_SCRIPT" ] || { echo "UNEXPECTED osascript $*" >>"$SIM/violations"; exit 1; }
+sc=$(cat "$SIM/scenario" 2>/dev/null)
+case "$sc" in
+  silent) sleep 30; exit 0 ;;
+  rawdenied) echo "70:74: execution error: System Events got an error: osascript is not allowed assistive access. (-1728)" >&2; exit 1 ;;
+esac
+st="$SIM/direct"; mkdir -p "$st"
+printf '%s\n' "$2" >"$st/request"
+FORTIVPN_STATE="$st" "$FAKE_BIN/applet"
+cat "$st/result"
+EOF
+
 cat >"$F/nc" <<'EOF'
 #!/bin/bash
 [ -e "$SIM/reachable" ]
@@ -61,7 +78,7 @@ EOF
 chmod +x "$F"/*
 
 export SIM="$S" FAKE_BIN="$F"
-export FORTIVPN_APPLET="$APPDIR" FORTIVPN_STATE="$WORK/state"
+export FORTIVPN_APPLET="$APPDIR" FORTIVPN_STATE="$WORK/state" FORTIVPN_SCRIPT="$VPN_DIR/forticlient/VPNConnect.applescript"
 export FORTIVPN_PATH="$F:/usr/bin:/bin:/usr/sbin:/sbin"
 export FORTIVPN_TIMEOUT=5 FORTIVPN_APPLET_WAIT=3 FORTIVPN_DOWN_WAIT=5
 VPN="$VPN_DIR/vpn"
@@ -91,6 +108,11 @@ SRC="$VPN_DIR/forticlient/VPNConnect.applescript"
 check "applet only drives the FortiClient process" test -z "$(grep -o 'process "[^"]*"' "$SRC" | grep -v 'process "FortiClient"')"
 check "applet accepts only the fixed request words" test "$(grep -o 'req is "[a-z]*"' "$SRC" | sort -u | tr '\n' ' ')" = 'req is "check" req is "connect" req is "disconnect" req is "dump" req is "status" '
 check "applet runs no shell command built from the request" test -z "$(grep 'do shell script' "$SRC" | grep -E '& req|req &')"
+check "applet walks the tree by hand (entire contents misses Electron's web area)" test -z "$(grep -v '^[[:space:]]*--' "$SRC" | grep 'entire contents')"
+check "applet refreshes FortiClient's stale tree (AXManualAccessibility off, then on)" test "$(grep -c 'AXManualAccessibility" to' "$SRC")" = 2
+check "applet refuses an ambiguous click" grep -q 'refusing an ambiguous click' "$SRC"
+check "applet reads a button's label before pressing it" test -z "$(grep 'my press(b)' -A1 "$SRC" | grep 'labelOf(b)')"
+check "applet maps macOS's 'assistive access' error to 'not allowed'" grep -q 'assistive access' "$SRC"
 
 # ------------------------------------------------------------------ vpn command
 section "vpn command (simulated applet)"
@@ -128,7 +150,7 @@ reset already-nodns; start=$(date +%s); run up; took=$(( $(date +%s) - start ))
 check "FortiClient connected but host unreachable → exit 2 with hint" test "$RC" = 2 -a -n "$(has 'DNS or routes' && echo y)"
 
 reset notallowed; run up
-check "applet not allowed under Accessibility → exit 3 with setup hint" test "$RC" = 3 -a -n "$(has 'install-applet.sh' && echo y)"
+check "applet not allowed under Accessibility → exit 3 with setup hint" test "$RC" = 3 -a -n "$(has "allow 'VPN Connect' under Privacy" && echo y)"
 reset notallowed; run setup-check
 check "setup-check reports 'not allowed' → exit 3" test "$RC" = 3 -a -n "$(has 'not allowed' && echo y)"
 reset ok; run setup-check
@@ -152,11 +174,31 @@ check "another vpn command running (fresh lock) → exit 1, applet not launched"
 reset ok; mkdir -p "$FORTIVPN_STATE/lock"; touch -t 202001010000 "$FORTIVPN_STATE/lock"; run up
 check "stale lock from a crash (> 2 min) is cleared → exit 0" test "$RC" = 0
 
-reset ok; OUT=$(FORTIVPN_APPLET="$WORK/missing.app" "$VPN" up 2>&1); RC=$?
-check "applet not built → exit 3, points to install-applet.sh" test "$RC" = 3 -a -n "$(has 'install-applet.sh' && echo y)"
 
 reset ok
 check "open was only ever called as 'open -g <applet>'" test ! -s "$S/violations"
+
+
+# ------------------------------------------------------------------ direct runner
+section "vpn command, direct osascript runner (no applet built)"
+export FORTIVPN_APPLET="$WORK/none.app"
+reset ok; run up
+check "no applet → runs the script with osascript, connects, exit 0" test "$RC" = 0 -a "$(count osascript-calls)" = 1 -a "$(count open-calls)" = 0
+check "  … passed the request as an argument" test "$(cat "$S/osascript-calls")" = "$FORTIVPN_SCRIPT connect"
+run down
+check "  … down works the same way" test "$RC" = 0 -a -n "$(has 'clicked Disconnect' && echo y)"
+reset notallowed; run up
+check "  … 'not allowed' → exit 3, says to allow this app (Terminal / VS Code)" test "$RC" = 3 -a -n "$(has 'Terminal / VS Code' && echo y)"
+reset rawdenied; run up
+check "  … raw macOS -1728 'assistive access' error → exit 3" test "$RC" = 3
+reset silent; start=$(date +%s); run up; took=$(( $(date +%s) - start ))
+check "  … script hangs → exit 1 after the wait (${took}s)" test "$RC" = 1 -a "$took" -le 6
+pkill -f "$F/osascript" 2>/dev/null
+reset ok; FORTIVPN_RUNNER=applet run up
+check "FORTIVPN_RUNNER=applet with no applet → exit 3, points to install-applet.sh" test "$RC" = 3 -a -n "$(has 'install-applet.sh' && echo y)"
+export FORTIVPN_APPLET="$APPDIR"
+reset ok
+check "osascript was only ever called with the repo's script" test ! -s "$S/violations"
 
 # ------------------------------------------------------------------ installer
 section "install-applet.sh (into a temp folder)"

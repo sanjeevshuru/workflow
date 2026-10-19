@@ -6,7 +6,7 @@ GitLab (`jcvs.japfacomfeed.co.id`) and the internal dev hosts are only reachable
 - before a remote git action, when that action fails with a network error: repo-sync fetch, step 03 push, MR review fetch. The tunnel can drop during a long run or while the laptop sleeps.
 
 `setup/vpn/vpn up` connects without anyone clicking:
-- **VPN Connect.app** clicks SAML Login in FortiClient.
+- A script clicks **Connect** in FortiClient, through macOS Accessibility.
 - The Microsoft sign-in then completes in the browser, by itself when the browser already has a Microsoft session.
 - Machine setup, once per Mac, needs no admin: `setup/vpn.md`.
 
@@ -25,7 +25,7 @@ Paths are relative to this workflow folder.
    | 0 | connected and GitLab reachable | record `connected by vpn up`, continue |
    | 1 | the sign-in didn't finish in time, or FortiClient's window wasn't as expected | show the lines it printed, then ask (step 3) |
    | 2 | FortiClient connected, but GitLab doesn't answer | show the message (DNS or routes: IT), then ask (step 3) |
-   | 3 | VPN Connect.app isn't built or isn't allowed under Accessibility | point to `setup/vpn.md` → Setup (one time, no admin), then ask (step 3) |
+   | 3 | clicking FortiClient isn't allowed under Accessibility (the message names the app to allow) | point to `setup/vpn.md` → Setup (one time, no admin), then ask (step 3) |
 3. **Ask** when it couldn't connect:
    - **Retry**: run this procedure again.
    - **I've connected myself**: run `setup/vpn/vpn check`, then continue.

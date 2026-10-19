@@ -1,0 +1,68 @@
+#!/bin/sh
+# fortivpn-managed: installed to /etc/ppp/ip-up by setup/vpn/install.sh
+#
+# pppd runs this as root when a PPP link comes up:
+#   $1 interface  $2 tty  $3 speed  $4 local IP  $5 remote IP  $6 ipparam
+# It only acts on the openfortivpn link (ipparam "fortivpn", set in work.conf). macOS ignores
+# /etc/resolv.conf, which is all openfortivpn edits, so this points each internal domain in
+# /etc/openfortivpn/resolver-domains at the VPN's DNS servers through /etc/resolver/<domain>.
+# Servers come from pppd (DNS1/DNS2, usepeerdns) or else from the gateway's XML config in the log.
+#
+# FORTIVPN_ROOT is a staging prefix for the test suite only; pppd never sets it.
+
+PATH=/usr/bin:/bin:/usr/sbin:/sbin
+ROOT="${FORTIVPN_ROOT:-}"
+MARKER="# fortivpn-managed"
+
+[ "${6:-}" = fortivpn ] || exit 0
+
+DOMAINS_FILE="$ROOT/etc/openfortivpn/resolver-domains"
+LOG="$ROOT/var/log/fortivpn.log"
+RESOLVER_DIR="$ROOT/etc/resolver"
+
+note() { echo "$(date '+%Y-%m-%d %H:%M:%S') ip-up: $*" >>"$LOG" 2>/dev/null; }
+
+valid_ip() { printf '%s\n' "$1" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; }
+
+servers=""
+for ip in "${DNS1:-}" "${DNS2:-}"; do
+  valid_ip "$ip" && servers="$servers $ip"
+done
+if [ -z "$servers" ] && [ -r "$LOG" ]; then
+  # Only this session: servers logged after the latest SAML wait. One IP per line, so word splitting is fine.
+  # shellcheck disable=SC2013
+  for ip in $(awk '/Listening for SAML login/ { n = 0; next }
+                   /Found dns server/ { for (i = 1; i < NF; i++) if ($i == "server") a[++n] = $(i + 1) }
+                   END { for (i = 1; i <= n; i++) print a[i] }' "$LOG"); do
+    valid_ip "$ip" || continue
+    case " $servers " in *" $ip "*) ;; *) servers="$servers $ip" ;; esac
+  done
+fi
+
+if [ -z "$servers" ]; then
+  note "no DNS servers from pppd or the gateway; internal names will not resolve"
+  exit 0
+fi
+[ -r "$DOMAINS_FILE" ] || { note "no $DOMAINS_FILE; DNS not changed"; exit 0; }
+
+mkdir -p "$RESOLVER_DIR"
+grep -Ev '^[[:space:]]*(#|$)' "$DOMAINS_FILE" | while read -r domain _; do
+  printf '%s\n' "$domain" | grep -Eq '^[A-Za-z0-9.-]+$' || { note "skipped invalid domain '$domain'"; continue; }
+  file="$RESOLVER_DIR/$domain"
+  if [ -e "$file" ] && ! grep -q "^$MARKER" "$file"; then
+    note "left $file alone: not written by fortivpn"
+    continue
+  fi
+  {
+    echo "$MARKER: written by /etc/ppp/ip-up, removed by /etc/ppp/ip-down"
+    for ip in $servers; do echo "nameserver $ip"; done
+  } >"$file"
+  chmod 644 "$file"
+  note "resolver $domain ->$servers ($1)"
+done
+
+if [ -z "$ROOT" ]; then
+  dscacheutil -flushcache 2>/dev/null
+  killall -HUP mDNSResponder 2>/dev/null
+fi
+exit 0

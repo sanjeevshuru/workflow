@@ -3,6 +3,7 @@
 You run the flow for one ticket (`<KEY>`, e.g. `SCRUM-512`). You own every interaction with the user. Roles do focused work and report through files.
 
 ## Start
+0. **VPN preflight**: follow `flow/playbooks/vpn.md`. GitLab needs the VPN, and `vpn up` connects it (it may open a Microsoft sign-in in the browser). Record the result in `status.md` → Network once that file exists.
 1. Read `flow/rules.md`, `flow/steps/registry.md` and `lessons/workflow.md`. Apply the workflow lessons throughout the run.
 2. If `runs/<KEY>/status.md` exists, go to **Resume** instead.
 3. Create `runs/<KEY>/`, and create `status.md` from `flow/templates/status.md`.
@@ -38,6 +39,7 @@ Triggered by "restart <KEY>" or `/restart-ticket <KEY> [figma links…]`. The us
 If the user wants a fresh analysis but to **keep their answers**, that's not a restart. Resume and re-run the roles instead.
 
 ## Resume
+0. **VPN preflight**: follow `flow/playbooks/vpn.md` and record the result in `status.md` → Network. The tunnel doesn't survive sleep or a new session.
 1. Read `runs/<KEY>/status.md`: `current_step`, `step_status`, Gate log, Repo sync, Notes.
    - Re-sync the in-scope repos (`flow/playbooks/repo-sync.md` → On resume) before any role reads code. In step 03 this doesn't apply to repos on their feature branch (see below). If new commits touch files the plans rely on, ask whether to re-run `code-scout` and the affected planner.
    - A status file without a `lifecycle` field is an older run: treat it as `active` and add the field.

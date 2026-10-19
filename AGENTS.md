@@ -13,6 +13,7 @@ This folder is a markdown-driven, human-gated dev workflow. The same instruction
 | "deployment doc <KEY>" | Read `flow/ORCHESTRATOR.md` → Resume, then run step 04 (`flow/steps/04-deployment-doc.md`). It needs Gate 4 approved first |
 | "approve" / "yes" / "proceed" at a gate | Pass the gate as described in the current step |
 | "review MR" / "review <KEY>" / `/review-mr [MR url \| KEY]` / "resume review <KEY>" | Read `flow/REVIEW.md` and follow it (state in `reviews/<KEY>/`) |
+| "connect vpn" / "vpn up" / "vpn status" | Read `flow/playbooks/vpn.md` and run its procedure (or just `vpn status`) |
 | "archive <KEY>" / "reopen <KEY>" | Read `flow/ORCHESTRATOR.md` → Keeping plans until the ticket is done |
 | anything else about a ticket in `runs/` | Read `runs/<KEY>/status.md` first (or `runs/_archive/<KEY>/status.md`) |
 
@@ -32,6 +33,7 @@ This folder is a markdown-driven, human-gated dev workflow. The same instruction
    - No force pushes, no pushes to protected or development branches, no merges, rebases or `--no-verify`.
    - **Step 04** (deployment doc) is read-only toward repos and Jira. It writes only to `runs/<KEY>/`, plus `config/deployment.md` when the user answers a dev-deploy question.
    - Jira: the only writes are the step 01 claim (above) and moving the ticket to **Code Review** after a successful push. Never comment, edit other fields or add links.
+   - VPN: `vpn up` (`flow/playbooks/vpn.md`) is a local network action, not a write to a repo or Jira, so it's allowed in every step and in MR review. Never run `vpn down` unless the user asks.
    - **MR review** (`flow/REVIEW.md`) is read-only toward the user's repos and Jira: `git fetch`, plus temporary review worktrees outside the repo folders that are removed after each round. Never a checkout, stash or rebase in the user's own working trees. Its only GitLab write is posting review comments through `flow/playbooks/mr-review.md`, after the user's yes at Gate R. It never approves, merges or resolves threads.
 4. Service repos live beside this folder. Their paths, stacks and conventions are in `config/services.md`. Jira site and field handling are in `config/jira.md`. A repo's own `CLAUDE.md` / `AGENTS.md` / `SKILLS.md` take precedence over generic patterns.
 5. Tool names differ between hosts. When a file says "Jira MCP" or "Figma MCP `get_metadata`", use whatever tool your host exposes for that server. If it is not available, follow `setup/mcp.md` → "When an MCP is unavailable".

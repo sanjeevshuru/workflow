@@ -16,7 +16,8 @@ GitLab and git mechanics (glab commands, worktrees, branch state, the host revie
 Triggered by "review MR", `/review-mr`, `/review-mr <MR url>` or `/review-mr <KEY>`.
 1. Read `flow/rules.md`, `flow/playbooks/mr-review.md` and `lessons/workflow.md`.
 2. **R0. Preflight** (playbook → Preflight):
-   - glab is installed and logged in to the GitLab host, the host is reachable (VPN), and you have the username. If not, stop and point the user to `setup/mcp.md` → GitLab CLI.
+   - VPN: follow `flow/playbooks/vpn.md` first. It connects with `vpn up` if GitLab isn't reachable.
+   - glab is installed and logged in to the GitLab host, and you have the username. If not, stop and point the user to `setup/mcp.md` → GitLab CLI.
    - The host's **code-review command** is available (playbook → Host code review). If it isn't installed or enabled, **stop and ask the user to install it first**, with the install step for this host. Continue only when it's available, or if the user explicitly says to review without it (record that in `status.md` → Notes).
 3. With an MR url: skip R1 and use that MR. With a key: skip R1 and go to R2 for that key.
 
@@ -43,7 +44,7 @@ Triggered by "review MR", `/review-mr`, `/review-mr <MR url>` or `/review-mr <KE
 
 ## R4. Fetch the code and check the branch: rebase first
 Run this before any other review work. For each MR's repo (paths in `config/services.md`):
-1. `git -C <path> fetch origin <source_branch> <target_branch>` (playbook → Fetch). Check that `<head_sha>` and `<base_sha>` are present. If the repo isn't cloned, or the fetch fails (VPN), ask: retry, or abort.
+1. `git -C <path> fetch origin <source_branch> <target_branch>` (playbook → Fetch). Check that `<head_sha>` and `<base_sha>` are present. On a network error, run `flow/playbooks/vpn.md` → Retry once on a network error. If the repo isn't cloned, or the fetch still fails, ask: retry, or abort.
 2. **Branch state** (playbook → Branch state): how many commits the source branch is behind the latest target (development) branch, and whether it merges into it without conflicts (the conflicted files, if any). Cross-check with GitLab's merge status. Record it in `status.md` → MRs (`up to date`, `behind <n>`, or `conflicts: <files>`).
 3. **Every reviewed MR is up to date**: continue with R5.
 4. **Any reviewed MR is behind or conflicting**: **stop. Don't review the code.** No ticket or spec reading, no worktree, no host review, no roles, for any MR of the ticket. A backend pair is reviewed together, so one stale MR holds both.

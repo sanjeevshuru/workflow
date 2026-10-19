@@ -42,7 +42,7 @@ The agent **never resolves merge conflicts**, not even trivial ones. That means 
    - **Abort** the run.
 
    Never stash, discard or commit changes without the user's choice. If `stash push` fails, show the error and ask. Don't retry with other flags.
-4. **Fetch**: `git -C <path> fetch origin --prune`. On failure (network or VPN), ask the user:
+4. **Fetch**: `git -C <path> fetch origin --prune`. On a network error, run `flow/playbooks/vpn.md` → Retry once on a network error. If it still fails, ask the user:
    - continue on the **local** development branch without pulling, recorded as "not pulled: fetch failed"
    - abort
 5. **Check out** the development branch, if it isn't already current: `git -C <path> checkout <dev branch>`. If the local branch doesn't exist, use `git -C <path> checkout -b <dev branch> --track origin/<dev branch>`. If the checkout fails, show the error and ask. Don't force it.

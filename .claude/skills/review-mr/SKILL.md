@@ -9,6 +9,7 @@ Arguments: `$ARGUMENTS`. Empty means pick the oldest MR waiting for your review;
 Read `flow/REVIEW.md` and follow it exactly, with `flow/playbooks/mr-review.md` for every glab call. Claude Code specifics:
 - GitLab only through the `glab` CLI in the fixed command shapes of the playbook. Reads are `glab api --hostname …`; posts are `glab api -X POST --hostname …`, and only after the yes at Gate R.
 - Ask questions and Gate R with the AskUserQuestion tool. Show every comment's text before asking to post.
+- VPN preflight (`flow/playbooks/vpn.md`): run `vpn up` in the foreground with a Bash `timeout` of 200000 ms. The default 120 s is shorter than its sign-in wait.
 - **Host code review** first: check that the `code-review` skill (or the plugin's `code-review:code-review`) is in your available skills. If neither is, stop and ask the user to install it (`claude update`, or `/plugin` → code-review) before anything else. Run it yourself with the Skill tool on each MR's review worktree: `skill: "code-review"`, `args: "<worktree path> high"`. Never pass `--comment`, `--fix` or `ultra`. Save its output to `reviews/<KEY>/r<n>/code-review-<service>.md`.
 - Run roles as sub-agents with the Agent tool: `backend-reviewer` (once for all backend MRs of the ticket), `frontend-reviewer` (once for the closio-web-v2 MR). Pass only the key, the round, and the input file paths.
 - Jira: `atlassian` MCP read tools only (`getJiraIssue` with all fields). No transitions, no comments.

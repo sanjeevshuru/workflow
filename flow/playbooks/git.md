@@ -77,7 +77,7 @@ For each repo, providers first:
    - `git -C <path> ls-remote --heads origin <branch>` returns the hash that was pushed.
    - That hash equals `HEAD`.
 5. **Record** in `status.md` → Implementation: pushed time, remote hash, MR URL.
-6. If a push fails (rejected, network, hook), **stop**: don't push the remaining repos. Show the error and ask.
+6. If a push fails with a network error, run `flow/playbooks/vpn.md` → Retry once on a network error, for that repo only. If it still fails, or fails for another reason (rejected, hook), **stop**: don't push the remaining repos. Show the error and ask.
 
 ## On resume
 - Compare `status.md` → Branches and Commits with the repo: current branch, `HEAD`, and `git log <dev>..HEAD`.

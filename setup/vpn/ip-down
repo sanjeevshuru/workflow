@@ -1,0 +1,27 @@
+#!/bin/sh
+# fortivpn-managed: installed to /etc/ppp/ip-down by setup/vpn/install.sh
+#
+# pppd runs this as root when a PPP link goes down (same arguments as ip-up). For the openfortivpn
+# link (ipparam "fortivpn") it removes the /etc/resolver files that ip-up wrote, and nothing else.
+#
+# FORTIVPN_ROOT is a staging prefix for the test suite only; pppd never sets it.
+
+PATH=/usr/bin:/bin:/usr/sbin:/sbin
+ROOT="${FORTIVPN_ROOT:-}"
+MARKER="# fortivpn-managed"
+
+[ "${6:-}" = fortivpn ] || exit 0
+
+LOG="$ROOT/var/log/fortivpn.log"
+for file in "$ROOT"/etc/resolver/*; do
+  [ -f "$file" ] || continue
+  grep -q "^$MARKER" "$file" || continue
+  rm -f "$file"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') ip-down: removed $file" >>"$LOG" 2>/dev/null
+done
+
+if [ -z "$ROOT" ]; then
+  dscacheutil -flushcache 2>/dev/null
+  killall -HUP mDNSResponder 2>/dev/null
+fi
+exit 0

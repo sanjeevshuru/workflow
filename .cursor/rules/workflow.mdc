@@ -1,0 +1,8 @@
+---
+description: Ticket workflow rules (never assume, gates, runs/ state)
+alwaysApply: true
+---
+
+Read and follow `AGENTS.md` at the workspace root. Cursor specifics:
+- Run roles **sequentially** in this chat (see `flow/ORCHESTRATOR.md` → Running a role), unless background agents are enabled.
+- Ask questions as a numbered list in chat, then stop and wait.

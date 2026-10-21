@@ -6,6 +6,7 @@
 #   vpn status   connected | connecting | disconnected   (exit 0 only when the tunnel is up)
 #   vpn check    is the internal probe host reachable, through any VPN   (exit 0 when reachable)
 #   vpn log      last 40 lines of the VPN log
+#   vpn installed  is the one-time install in place? (exit 3 with the command to run if not)
 #
 # Installed to /usr/local/bin/vpn by setup/vpn/install.sh. The only root actions are
 # `launchctl kickstart` / `launchctl kill SIGTERM` of the local.fortivpn daemon, which the
@@ -31,6 +32,9 @@ START_WAIT="${FORTIVPN_START_WAIT:-15}"
 # seconds is the browser brought forward, for you to sign in. FORTIVPN_KEEP_FOCUS=0: open it in front.
 KEEP_FOCUS="${FORTIVPN_KEEP_FOCUS:-1}"
 SIGNIN_GRACE="${FORTIVPN_SIGNIN_GRACE:-25}"
+HERE=$(cd "$(dirname "$0")" && pwd)
+INSTALL_ROOT="${FORTIVPN_ROOT:-}"   # test suite only: where to look for the installed files
+FORTICLIENT_APP="${FORTIVPN_FORTICLIENT_APP:-/Applications/FortiClient.app}"
 PATH="${FORTIVPN_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
 export PATH
 
@@ -81,6 +85,28 @@ default_browser() {
     | awk '/LSHandlerRoleAll/ { id = $3 } /LSHandlerURLScheme = https;/ { gsub(/[";]/, "", id); print id; exit }'
 }
 
+# Bundle id of the frontmost app (no permission needed), or nothing.
+front_app() {
+  lsappinfo info -only bundleid "$(lsappinfo front 2>/dev/null)" 2>/dev/null \
+    | sed -n 's/.*[Bb]undle[A-Za-z]*"*="\([^"]*\)".*/\1/p' | head -n 1
+}
+
+lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# Background: Chrome comes forward even for `open -g`. While the sign-in should be completing by
+# itself, switch back to <app> whenever <browser> takes the front. Stopped by cmd_up.
+focus_guard() { # focus_guard <app> <browser> <seconds>
+  local end cur
+  end=$(( $(date +%s) + $3 ))
+  while [ "$(date +%s)" -lt "$end" ]; do
+    cur=$(front_app)
+    [ -n "$cur" ] && [ "$(lower "$cur")" = "$(lower "$2")" ] && open -b "$1" >/dev/null 2>&1
+    sleep 0.3
+  done
+}
+
+stop_guard() { [ -n "${guard:-}" ] && kill "$guard" 2>/dev/null; guard=""; }
+
 show_log_tail() {
   if [ -r "$LOG" ]; then
     err "last log lines ($LOG):"
@@ -99,6 +125,37 @@ stop_daemon() {
   ! running
 }
 
+# Is the one-time install (setup/vpn/install.sh) in place and active? Exit 0, or 3 with what's
+# missing and the command to fix it.
+cmd_installed() {
+  local R="$INSTALL_ROOT" missing=0 ofv=""
+  check_item() { # check_item <label> <test...>
+    local label="$1"; shift
+    if "$@"; then say "ok       $label"; else say "MISSING  $label"; missing=1; fi
+  }
+  rule_active() { sudo -n -l 2>/dev/null | grep -q "system/$LABEL"; }
+  check_item "VPN client (root-owned copy)    /usr/local/libexec/fortivpn/openfortivpn" test -x "$R/usr/local/libexec/fortivpn/openfortivpn"
+  check_item "gateway config                  /etc/openfortivpn/work.conf" test -r "$R/etc/openfortivpn/work.conf"
+  check_item "on-demand daemon                /Library/LaunchDaemons/$LABEL.plist" test -e "$R/Library/LaunchDaemons/$LABEL.plist"
+  check_item "passwordless start/stop rule    /etc/sudoers.d/fortivpn" test -e "$R/etc/sudoers.d/fortivpn"
+  check_item "  … active for $(id -un)" rule_active
+  check_item "VPN log readable                $LOG" test -r "$R$LOG"
+  [ "$missing" -eq 0 ] && { say "installed"; return 0; }
+
+  for c in /opt/homebrew/bin/openfortivpn /usr/local/bin/openfortivpn "$HOME/homebrew/bin/openfortivpn"; do
+    [ -x "$c" ] && { ofv="$c"; break; }
+  done
+  err "not installed. Once, in your own terminal (sudo asks for your password once; no AI agent can type it):"
+  [ -n "$ofv" ] || err "    brew install openfortivpn"
+  if [ -x "$HERE/install.sh" ]; then
+    err "    sudo \"$HERE/install.sh\" --user \"$(id -un)\""
+  else
+    err "    sudo setup/vpn/install.sh --user \"$(id -un)\"     (from the workflow folder)"
+  fi
+  err "then run: vpn up"
+  return 3
+}
+
 cmd_status() {
   local s iface
   s=$(state); iface=$(ppp_iface)
@@ -113,7 +170,8 @@ cmd_check() {
 }
 
 cmd_up() {
-  local s offset url i b
+  local s offset url i b orig=""
+  guard=""
   s=$(state)
   if [ "$s" = connected ]; then say "already connected ($(ppp_iface))"; return 0; fi
   if [ "$s" = disconnected ] && reachable; then
@@ -128,17 +186,22 @@ cmd_up() {
   else
     offset=$(log_size)
     if ! priv kickstart >/dev/null 2>&1; then
-      err "not allowed to start the VPN daemon without a password."
-      err "an admin has to run setup/vpn/install.sh once (see setup/vpn.md)."
+      err "can't start the VPN daemon without a password:"
+      cmd_installed >&2
       return 3
     fi
   fi
 
-  # Wait for openfortivpn to print its SAML URL (it is listening on 127.0.0.1:8020 by then).
+  # Wait until openfortivpn listens on 127.0.0.1:8020. It logs "Listening for SAML login"; the
+  # "Using SAML authentication URL" line only appears in verbose builds, so the URL is otherwise
+  # built from work.conf in openfortivpn's own format.
   url=""; i=0
   while [ "$i" -lt "$START_WAIT" ]; do
     url=$(log_since "$offset" | sed -n 's/.*Using SAML authentication URL //p' | tail -n 1)
     [ -n "$url" ] && break
+    if log_since "$offset" | grep -q 'Listening for SAML login'; then
+      url=$(fallback_saml_url) && break
+    fi
     if ! running && [ "$i" -ge 2 ]; then
       err "openfortivpn exited before the sign-in started"
       show_log_tail "$offset"; return 1
@@ -147,10 +210,15 @@ cmd_up() {
   done
   if [ -z "$url" ]; then
     url=$(fallback_saml_url) || { err "no SAML URL in the log and no host in $CONF"; stop_daemon; return 1; }
-    err "warning: SAML URL not seen in the log; using $url"
+    err "warning: openfortivpn didn't report it was listening; trying $url anyway"
   fi
 
   if [ "$KEEP_FOCUS" = 1 ]; then
+    orig=$(front_app); b=$(default_browser)
+    if [ -n "$orig" ] && [ -n "$b" ] && [ "$(lower "$orig")" != "$(lower "$b")" ]; then
+      focus_guard "$orig" "$b" "$SIGNIN_GRACE" >/dev/null 2>&1 &
+      guard=$!; disown "$guard" 2>/dev/null
+    fi
     open -g "$url" >/dev/null 2>&1 || err "could not open the browser; open this URL yourself: $url"
     say "signing in in a background browser tab (up to ${TIMEOUT}s; the browser comes forward after ${SIGNIN_GRACE}s if Microsoft needs you)"
   else
@@ -162,6 +230,7 @@ cmd_up() {
   while :; do
     if log_since "$offset" | grep -q 'Tunnel is up and running'; then break; fi
     if [ "$KEEP_FOCUS" = 1 ] && [ "$i" -eq "$SIGNIN_GRACE" ]; then
+      stop_guard
       b=$(default_browser)
       if [ -n "$b" ] && open -b "$b" >/dev/null 2>&1; then
         say "not connected yet: Microsoft needs you to sign in; switched to the browser ($b)"
@@ -171,19 +240,26 @@ cmd_up() {
       fi
     fi
     if ! running; then
+      stop_guard
       err "openfortivpn stopped before the tunnel came up"
       show_log_tail "$offset"; return 1
     fi
     if [ "$i" -ge "$TIMEOUT" ]; then
+      stop_guard
       err "timed out after ${TIMEOUT}s waiting for the tunnel; stopping"
       show_log_tail "$offset"; stop_daemon; return 1
     fi
     sleep 1; i=$((i + 1))
   done
+  stop_guard
 
   i=0
   while [ "$i" -lt 10 ]; do
-    if reachable; then say "connected ($(ppp_iface)); $PROBE_HOST reachable"; return 0; fi
+    if reachable; then
+      say "connected ($(ppp_iface)); $PROBE_HOST reachable"
+      [ -d "$FORTICLIENT_APP" ] && say "note: FortiClient will keep showing \"Disconnected\": this tunnel is openfortivpn's, not FortiClient's. Don't press Connect there while it's up."
+      return 0
+    fi
     sleep 1; i=$((i + 1))
   done
   err "tunnel is up ($(ppp_iface)) but $PROBE_HOST is unreachable: check DNS (setup/vpn.md → Troubleshooting)"
@@ -209,5 +285,6 @@ case "${1:-}" in
   status) cmd_status ;;
   check) cmd_check ;;
   log) cmd_log ;;
-  *) echo "usage: vpn up|down|status|check|log" >&2; exit 64 ;;
+  installed) cmd_installed ;;
+  *) echo "usage: vpn up|down|status|check|log|installed" >&2; exit 64 ;;
 esac

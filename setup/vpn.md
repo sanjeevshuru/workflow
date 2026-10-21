@@ -8,7 +8,10 @@ vpn down     disconnect
 vpn status   connected | connecting | disconnected, plus GitLab reachability
 vpn check    is GitLab reachable, through any VPN?
 vpn log      last 40 lines of the VPN log
+vpn installed  is the one-time install in place? (exit 3 with the exact install command if not)
 ```
+
+The workflow runs `vpn installed` first at every `/run-ticket` (Start and Resume) and MR review. If the install is missing, it asks you to install it before doing anything else. Once installed, it connects by itself whenever GitLab isn't reachable.
 
 In AI tools: `/vpn`, `/vpn down`, `/vpn status` (Claude Code, Cursor, Antigravity), or "connect vpn" (Codex).
 
@@ -18,6 +21,7 @@ In AI tools: `/vpn`, `/vpn down`, `/vpn status` (Claude Code, Cursor, Antigravit
   - If the browser is signed in to Microsoft, the sign-in completes by itself. The gateway redirects the tab back to `127.0.0.1:8020`, and the tunnel comes up.
   - If the tunnel isn't up after **25 s** (`FORTIVPN_SIGNIN_GRACE`), Microsoft needs you, so `vpn up` brings the browser forward. `FORTIVPN_KEEP_FOCUS=0` opens the page in front straight away.
 - **Not possible:** connecting at boot or reconnecting silently. Each connection needs a browser sign-in, and the gateway ends sessions after its timeout.
+- **FortiClient's window keeps showing "Disconnected".** That's expected: the tunnel belongs to openfortivpn, and FortiClient only shows connections it made itself. It has no way to be told about another client's tunnel. Don't press Connect in FortiClient while `vpn` is up: two clients would fight over routes and DNS. To check the VPN, use `vpn status`.
 - **Split DNS:** macOS ignores `/etc/resolv.conf`, so `/etc/ppp/ip-up` points each domain in `/etc/openfortivpn/resolver-domains` (default `japfacomfeed.co.id`) at the VPN's DNS servers through `/etc/resolver/`. `/etc/ppp/ip-down` removes them again.
 - **TLS:** the gateway sends only its own certificate, without GoDaddy's G2 intermediate. The CA bundle adds that intermediate (`setup/vpn/certs/`), so certificate renewals by the same CA keep working with no pinned hash.
 

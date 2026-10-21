@@ -13,11 +13,17 @@ GitLab (`jcvs.japfacomfeed.co.id`) and the internal dev hosts are only reachable
 ## Allowed commands
 Paths are relative to this workflow folder.
 - `setup/vpn/vpn check`: read-only, no UI
-- `setup/vpn/vpn status`, `setup/vpn/vpn log`: read-only
+- `setup/vpn/vpn installed`, `setup/vpn/vpn status`, `setup/vpn/vpn log`: read-only
 - `setup/vpn/vpn up`: connects. It's a local network action, not a write to a repo or Jira, so any step may run it.
 - Never `setup/vpn/vpn down`, unless the user asks. The user may need the tunnel for other work.
 
 ## Procedure
+0. **Installed?** Run `setup/vpn/vpn installed` first, every time, even when GitLab is already reachable. That way a machine without the install is caught at the start of `/run-ticket`, not halfway through.
+   - Exit 0: continue with step 1.
+   - Exit 3: **stop and ask the user to install it now**, before any other work. Show the command it printed (`sudo …/setup/vpn/install.sh --user "<login>"`, plus `brew install openfortivpn` if listed) and say: it asks for their password once, in their own terminal. An agent can't type it, and must never ask for the password. Options:
+     - **I've installed it**: run step 0 again. If it still fails, show the `MISSING` lines and ask again.
+     - **Not now: I'll connect FortiClient myself**: skip to step 1 and use `setup/vpn/vpn check` only. Record `not installed: user connects manually`.
+     - **Continue offline** or **Abort**, as in step 3.
 1. **Check**: `setup/vpn/vpn check`. Exit 0 means GitLab is reachable. Record `reachable` and continue. Say nothing to the user.
 2. **Connect**: run `setup/vpn/vpn up` in the foreground, with a command timeout of at least 200 s. Before running it, tell the user in one line: "Connecting the VPN. If Microsoft needs you to sign in, the browser will come forward."
    | Exit | Meaning | Do |
@@ -25,7 +31,7 @@ Paths are relative to this workflow folder.
    | 0 | connected and GitLab reachable | record `connected by vpn up`, continue |
    | 1 | the sign-in didn't finish in time, or openfortivpn stopped | show the log lines it printed, then ask (step 3) |
    | 2 | tunnel up, but GitLab doesn't resolve or answer | show the message, point to `setup/vpn.md` → Troubleshooting, then ask (step 3) |
-   | 3 | not installed (no passwordless rule) | point to `setup/vpn.md` → Install (one admin password, once), then ask (step 3) |
+   | 3 | not installed (no passwordless rule); shouldn't happen after step 0 | go back to step 0 |
 3. **Ask** when it couldn't connect:
    - **Retry**: run this procedure again.
    - **I've connected myself**: run `setup/vpn/vpn check`, then continue.

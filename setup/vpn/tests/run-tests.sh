@@ -31,6 +31,11 @@ echo "$*" >>"$FAKE_STATE/sudo-calls"
 [ -e "$FAKE_STATE/nosudo" ] && { echo "sudo: a password is required" >&2; exit 1; }
 [ "${1:-}" = -n ] || { echo "VIOLATION (no -n): $*" >>"$FAKE_STATE/violations"; exit 1; }
 shift
+if [ "$*" = "-l" ]; then
+  echo "User may run the following commands on this host:"
+  echo "    (root) NOPASSWD: /bin/launchctl kickstart system/local.fortivpn, /bin/launchctl kill SIGTERM system/local.fortivpn"
+  exit 0
+fi
 case "$*" in
   "launchctl kickstart system/local.fortivpn"|"launchctl kill SIGTERM system/local.fortivpn") exec "$@" ;;
   *) echo "VIOLATION: $*" >>"$FAKE_STATE/violations"; echo "sudo: not allowed" >&2; exit 1 ;;
@@ -67,10 +72,11 @@ trap finish TERM
 while [ ! -e "$ST/daemon.pid" ]; do sleep 0.05; done
 [ "$sc" = crash ] && { echo "ERROR:  Could not load config" >>"$L"; finish; }
 echo "INFO:   Listening for SAML login on port 8020" >>"$L"
-echo "INFO:   Using SAML authentication URL https://vpnwm.japfacomfeed.co.id:443/remote/saml/start?redirect=1&realm=sso" >>"$L"
+[ "$sc" = urlline ] && echo "INFO:   Using SAML authentication URL https://vpnwm.japfacomfeed.co.id:443/remote/saml/start?redirect=1&realm=other" >>"$L"
 # The "user" signs in once the browser opens.
 while [ ! -e "$ST/opened" ]; do sleep 0.2; done
 sleep 1
+[ "$sc" = popup ] && { sleep 0.3; echo com.google.Chrome >"$ST/front"; sleep 1; }
 case "$sc" in
   needsignin)
     # Microsoft wants the user: nothing happens until the browser is brought forward for them.
@@ -105,9 +111,18 @@ cat >"$F/open" <<'EOF'
 #!/bin/bash
 case "$1" in
   -g) echo "$2" >>"$FAKE_STATE/opened"; echo "bg $2" >>"$FAKE_STATE/open-calls" ;;
-  -b) echo "$2" >>"$FAKE_STATE/focus-calls" ;;
+  -b) echo "$2" >>"$FAKE_STATE/focus-calls"; printf '%s\n' "$2" >"$FAKE_STATE/front" ;;
   *) echo "$1" >>"$FAKE_STATE/opened"; echo "fg $1" >>"$FAKE_STATE/open-calls" ;;
 esac
+EOF
+# Fake lsappinfo: the frontmost app is whatever $FAKE_STATE/front says (nothing → unknown).
+cat >"$F/lsappinfo" <<'EOF'
+#!/bin/bash
+case "$1" in
+  front) echo "ASN:0x0-0x1:" ;;
+  info) [ -s "$FAKE_STATE/front" ] && printf '    bundleID="%s"\n' "$(cat "$FAKE_STATE/front")" ;;
+esac
+exit 0
 EOF
 # Fake defaults: the LaunchServices https handler (Chrome), unless $FAKE_STATE/nobrowser exists.
 cat >"$F/defaults" <<'EOF'
@@ -120,7 +135,7 @@ chmod +x "$F"/*
 export FAKE_STATE="$S" FAKE_BIN="$F" FAKE_LOG="$WORK/fortivpn.log"
 export FORTIVPN_PATH="$F:/usr/bin:/bin:/usr/sbin:/sbin"
 export FORTIVPN_LOG="$FAKE_LOG" FORTIVPN_CONF="$WORK/work.conf"
-export FORTIVPN_TIMEOUT=6 FORTIVPN_START_WAIT=5
+export FORTIVPN_TIMEOUT=6 FORTIVPN_START_WAIT=5 FORTIVPN_FORTICLIENT_APP="$WORK/no-forticlient.app"
 
 printf 'host = vpnwm.japfacomfeed.co.id\nport = 443\nrealm = sso\n' >"$FORTIVPN_CONF"
 
@@ -220,6 +235,32 @@ reset ok; FORTIVPN_KEEP_FOCUS=0 run up
 check "FORTIVPN_KEEP_FOCUS=0 → sign-in page opened in front" test "$RC" = 0 -a -n "$(grep '^fg ' "$S/open-calls")" -a ! -e "$S/focus-calls"
 run down
 
+# Real openfortivpn logs only "Listening for SAML login": the URL is built from work.conf at once.
+reset ok; start=$(date +%s); run up; took=$(( $(date +%s) - start ))
+check "no URL line in the log → URL from work.conf, opened right away (${took}s, not the 5s start wait)" test "$RC" = 0 -a "$took" -le 4 -a -z "$(grep 'warning' <<<"$OUT")"
+run down
+reset urlline; run up
+check "a URL line in the log wins over work.conf" test "$(cat "$S/opened")" = "https://vpnwm.japfacomfeed.co.id:443/remote/saml/start?redirect=1&realm=other"
+run down
+
+# Focus guard: the browser jumps forward despite open -g → switched back to your app.
+reset popup; echo com.microsoft.VSCode >"$S/front"; run up
+check "browser jumps forward during the quiet sign-in → back to VS Code" test "$RC" = 0 -a "$(cat "$S/front")" = com.microsoft.VSCode -a "$(sort -u "$S/focus-calls" 2>/dev/null)" = com.microsoft.VSCode
+sleep 1; echo com.google.Chrome >"$S/front"; sleep 1
+check "  … guard stopped once connected (your own switch to Chrome is left alone)" test "$(cat "$S/front")" = com.google.Chrome
+run down
+reset popup; echo com.google.Chrome >"$S/front"; run up
+check "you were already in the browser → nothing switched" test "$RC" = 0 -a ! -e "$S/focus-calls"
+run down
+
+# FortiClient note
+reset ok; mkdir -p "$WORK/FortiClient.app"; FORTIVPN_FORTICLIENT_APP="$WORK/FortiClient.app" run up
+check "FortiClient installed → note that its window keeps showing Disconnected" grep -q 'FortiClient will keep showing "Disconnected"' <<<"$OUT"
+run down
+reset ok; run up
+check "  … no note without FortiClient" test -z "$(grep FortiClient <<<"$OUT")"
+run down
+
 reset nodns; run up
 check "tunnel up but probe host unreachable → exit 2 with DNS hint" test "$RC" = 2 -a -n "$(echo "$OUT" | grep 'check DNS')"
 run down
@@ -245,6 +286,27 @@ reset ok
 
 check "sudo only ever got the two allowed commands" test ! -s "$S/violations"
 
+# ------------------------------------------------------------------ install check
+section "vpn installed (one-time install detection)"
+IRT="$WORK/installed-root"
+mkdir -p "$IRT/usr/local/libexec/fortivpn" "$IRT/etc/openfortivpn" "$IRT/Library/LaunchDaemons" "$IRT/etc/sudoers.d" "$IRT$(dirname "$FAKE_LOG")"
+printf '#!/bin/sh\n' >"$IRT/usr/local/libexec/fortivpn/openfortivpn"; chmod +x "$IRT/usr/local/libexec/fortivpn/openfortivpn"
+touch "$IRT/etc/openfortivpn/work.conf" "$IRT/Library/LaunchDaemons/local.fortivpn.plist" "$IRT/etc/sudoers.d/fortivpn" "$IRT$FAKE_LOG"
+reset ok; OUT=$(FORTIVPN_ROOT="$IRT" "$VPN" installed 2>&1); RC=$?
+check "everything in place → 'installed', exit 0" test "$RC" = 0 -a -n "$(grep 'vpn: installed' <<<"$OUT")"
+rm "$IRT/Library/LaunchDaemons/local.fortivpn.plist"
+OUT=$(FORTIVPN_ROOT="$IRT" "$VPN" installed 2>&1); RC=$?
+check "daemon missing → exit 3, names it" test "$RC" = 3 -a -n "$(grep 'MISSING  on-demand daemon' <<<"$OUT")"
+check "  … prints the exact install command with this user" grep -q "install.sh\" --user \"$(id -un)\"" <<<"$OUT"
+touch "$IRT/Library/LaunchDaemons/local.fortivpn.plist"; touch "$S/nosudo"
+OUT=$(FORTIVPN_ROOT="$IRT" "$VPN" installed 2>&1); RC=$?
+check "files there but the passwordless rule isn't active → exit 3" test "$RC" = 3 -a -n "$(grep 'MISSING    … active for' <<<"$OUT")"
+OUT=$(FORTIVPN_ROOT="$WORK/empty-root" "$VPN" installed 2>&1); RC=$?
+check "nothing installed → exit 3, every item missing" test "$RC" = 3 -a "$(grep -c MISSING <<<"$OUT")" = 6
+reset ok; touch "$S/nosudo"; run up
+check "vpn up when not installed → exit 3 with the diagnosis and install command" test "$RC" = 3 -a -n "$(grep 'install.sh' <<<"$OUT")" -a -n "$(grep MISSING <<<"$OUT")"
+reset ok
+
 # ------------------------------------------------------------------ pppd hooks
 section "pppd hooks (ip-up / ip-down, staged)"
 R="$WORK/root"; mkdir -p "$R/etc/openfortivpn" "$R/var/log" "$R/etc/resolver"
@@ -257,6 +319,12 @@ check "ip-up uses DNS1/DNS2 from pppd" test "$(grep -c nameserver "$R/etc/resolv
 check "  … one file per listed domain" test -f "$R/etc/resolver/corp.internal"
 check "  … skips an invalid domain" test ! -e "$R/etc/resolver/bad;domain"
 check "  … files carry the managed marker" grep -q '^# fortivpn-managed' "$R/etc/resolver/corp.internal"
+strict_umask_ok() {
+  rm -rf "$R/etc/resolver"
+  (umask 077; DNS1=10.1.1.1 "$UP" ppp0 /dev/x 0 a b fortivpn)
+  [ "$(stat -f %Lp "$R/etc/resolver")" = 755 ] && [ "$(stat -f %Lp "$R/etc/resolver/corp.internal")" = 644 ]
+}
+check "  … /etc/resolver and its files readable by everyone, even under pppd's umask 077" strict_umask_ok
 "$DOWN" ppp0 /dev/x 0 10.9.0.2 10.9.0.1 fortivpn
 check "ip-down removes them" test ! -e "$R/etc/resolver/japfacomfeed.co.id" -a ! -e "$R/etc/resolver/corp.internal"
 

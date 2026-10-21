@@ -11,6 +11,8 @@
 # FORTIVPN_ROOT is a staging prefix for the test suite only; pppd never sets it.
 
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
+# pppd runs this with umask 077, which made /etc/resolver readable by root only.
+umask 022
 ROOT="${FORTIVPN_ROOT:-}"
 MARKER="# fortivpn-managed"
 
@@ -46,6 +48,7 @@ fi
 [ -r "$DOMAINS_FILE" ] || { note "no $DOMAINS_FILE; DNS not changed"; exit 0; }
 
 mkdir -p "$RESOLVER_DIR"
+chmod 755 "$RESOLVER_DIR"
 grep -Ev '^[[:space:]]*(#|$)' "$DOMAINS_FILE" | while read -r domain _; do
   printf '%s\n' "$domain" | grep -Eq '^[A-Za-z0-9.-]+$' || { note "skipped invalid domain '$domain'"; continue; }
   file="$RESOLVER_DIR/$domain"

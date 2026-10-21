@@ -6,7 +6,7 @@ argument-hint: "[up | down | status]"
 
 Arguments: `$ARGUMENTS`. Empty or `up` connects; `down` disconnects; `status` reports.
 
-- **up**: follow `flow/playbooks/vpn.md` → Procedure. Run `setup/vpn/vpn up` in the foreground with a Bash `timeout` of 200000 ms (the default 120 s is shorter than its sign-in wait). On a non-zero exit, ask with the AskUserQuestion tool, using the playbook's options.
+- **up**: follow `flow/playbooks/vpn.md` → Procedure, starting with step 0 (`setup/vpn/vpn installed`; if it exits 3, ask the user to install it now). Run `setup/vpn/vpn up` in the foreground with a Bash `timeout` of 200000 ms (the default 120 s is shorter than its sign-in wait). On a non-zero exit, ask with the AskUserQuestion tool, using the playbook's options.
 - **down**: run `setup/vpn/vpn down`, only because the user asked for it.
 - **status**: run `setup/vpn/vpn status` and report its lines.
 

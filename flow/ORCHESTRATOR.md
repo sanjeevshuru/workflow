@@ -3,7 +3,7 @@
 You run the flow for one ticket (`<KEY>`, e.g. `SCRUM-512`). You own every interaction with the user. Roles do focused work and report through files.
 
 ## Start
-0. **VPN preflight**: follow `flow/playbooks/vpn.md`. GitLab needs the VPN, and `setup/vpn/vpn up` connects it with openfortivpn, with no clicks (the Microsoft sign-in runs in a background browser tab). Record the result in `status.md` → Network once that file exists.
+0. **VPN preflight**: follow `flow/playbooks/vpn.md`. GitLab needs the VPN, and `setup/vpn/vpn up` connects it with openfortivpn, with no clicks (the Microsoft sign-in runs in a background browser tab). On a machine without the one-time VPN install, it asks the user to install it before anything else (playbook step 0). Record the result in `status.md` → Network once that file exists.
 1. Read `flow/rules.md`, `flow/steps/registry.md` and `lessons/workflow.md`. Apply the workflow lessons throughout the run.
 2. If `runs/<KEY>/status.md` exists, go to **Resume** instead.
 3. Create `runs/<KEY>/`, and create `status.md` from `flow/templates/status.md`.

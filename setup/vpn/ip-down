@@ -1,5 +1,5 @@
 #!/bin/sh
-# fortivpn-managed: installed to /etc/ppp/ip-down by setup/vpn/openfortivpn/install.sh
+# fortivpn-managed: installed to /etc/ppp/ip-down by setup/vpn/install.sh
 #
 # pppd runs this as root when a PPP link goes down (same arguments as ip-up). For the openfortivpn
 # link (ipparam "fortivpn") it removes the /etc/resolver files that ip-up wrote, and nothing else.

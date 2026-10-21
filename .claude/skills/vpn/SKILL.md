@@ -1,6 +1,6 @@
 ---
 name: vpn
-description: Connect (or disconnect, or check) the company VPN through FortiClient, with no clicks. Use when the user says "connect vpn", "vpn up", "vpn down", "vpn status", or when GitLab (jcvs.japfacomfeed.co.id) is unreachable.
+description: Connect (or disconnect, or check) the company VPN with openfortivpn, with no clicks. Use when the user says "connect vpn", "vpn up", "vpn down", "vpn status", or when GitLab (jcvs.japfacomfeed.co.id) is unreachable.
 argument-hint: "[up | down | status]"
 ---
 

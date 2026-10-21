@@ -5,27 +5,27 @@ GitLab (`jcvs.japfacomfeed.co.id`) and the internal dev hosts are only reachable
 - **R0** of an MR review (`flow/REVIEW.md`)
 - before a remote git action, when that action fails with a network error: repo-sync fetch, step 03 push, MR review fetch. The tunnel can drop during a long run or while the laptop sleeps.
 
-`setup/vpn/vpn up` connects without anyone clicking:
-- A script clicks **Connect** in FortiClient, through macOS Accessibility.
-- The Microsoft sign-in then completes in the browser, by itself when the browser already has a Microsoft session.
-- Machine setup, once per Mac, needs no admin: `setup/vpn.md`.
+`setup/vpn/vpn up` connects with openfortivpn, without anyone clicking:
+- The Microsoft sign-in runs in a background browser tab, so the user's focus doesn't move. It completes by itself when the browser has a Microsoft session.
+- Only if the tunnel isn't up after 25 s does the browser come forward, for the user to sign in.
+- Machine setup, once per Mac (one admin password): `setup/vpn.md`.
 
 ## Allowed commands
 Paths are relative to this workflow folder.
 - `setup/vpn/vpn check`: read-only, no UI
-- `setup/vpn/vpn status`, `setup/vpn/vpn setup-check`: read-only
+- `setup/vpn/vpn status`, `setup/vpn/vpn log`: read-only
 - `setup/vpn/vpn up`: connects. It's a local network action, not a write to a repo or Jira, so any step may run it.
 - Never `setup/vpn/vpn down`, unless the user asks. The user may need the tunnel for other work.
 
 ## Procedure
 1. **Check**: `setup/vpn/vpn check`. Exit 0 means GitLab is reachable. Record `reachable` and continue. Say nothing to the user.
-2. **Connect**: run `setup/vpn/vpn up` in the foreground, with a command timeout of at least 200 s. Before running it, tell the user in one line: "Connecting the VPN through FortiClient. If Microsoft asks you to sign in, do it in the browser tab that opens."
+2. **Connect**: run `setup/vpn/vpn up` in the foreground, with a command timeout of at least 200 s. Before running it, tell the user in one line: "Connecting the VPN. If Microsoft needs you to sign in, the browser will come forward."
    | Exit | Meaning | Do |
    |---|---|---|
    | 0 | connected and GitLab reachable | record `connected by vpn up`, continue |
-   | 1 | the sign-in didn't finish in time, or FortiClient's window wasn't as expected | show the lines it printed, then ask (step 3) |
-   | 2 | FortiClient connected, but GitLab doesn't answer | show the message (DNS or routes: IT), then ask (step 3) |
-   | 3 | clicking FortiClient isn't allowed under Accessibility (the message names the app to allow) | point to `setup/vpn.md` → Setup (one time, no admin), then ask (step 3) |
+   | 1 | the sign-in didn't finish in time, or openfortivpn stopped | show the log lines it printed, then ask (step 3) |
+   | 2 | tunnel up, but GitLab doesn't resolve or answer | show the message, point to `setup/vpn.md` → Troubleshooting, then ask (step 3) |
+   | 3 | not installed (no passwordless rule) | point to `setup/vpn.md` → Install (one admin password, once), then ask (step 3) |
 3. **Ask** when it couldn't connect:
    - **Retry**: run this procedure again.
    - **I've connected myself**: run `setup/vpn/vpn check`, then continue.

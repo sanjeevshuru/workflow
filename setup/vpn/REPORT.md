@@ -1,76 +1,108 @@
-# VPN automation through FortiClient: test report
+# Command-line VPN: implementation and test report
 
-Branch `feature/vpn-automation` · 2026-10-19 · macOS 27.0.1 · FortiClient VPN 7.4.3 (free VPN-only edition), profile "VPN SAML DM"
+Branch `feature/vpn-automation` · 2026-10-19 · macOS 27.0.1 (Apple Silicon)
 
 ## Verdict
-**Feasible, working live, and now part of the workflow.**
-- `setup/vpn/vpn up` connected the VPN with **no clicks and no sign-in prompt** on all 6 live attempts, in 13–15 s each.
-- GitLab answered after every connect: `git ls-remote` on `nodejs-ws1closio` returned `develop`.
-- It needs no sudo and no admin. The one-time setup is allowing an app under Privacy & Security → Accessibility.
+**Feasible, with two conditions, and not yet proven end to end.**
 
-Limits:
-- The Microsoft sign-in completes by itself only while the browser has a Microsoft session. When it has expired or MFA is due, the user signs in once in the browser.
-- It needs a logged-in, unlocked Mac.
+1. **It can't be fully headless.** The VPN signs in with Microsoft Entra ID (SAML), not a password. `vpn up` opens the sign-in in the browser. If the browser is already signed in to Microsoft, it finishes by itself with no typing. Connecting at boot and silent reconnects are not possible.
+2. **IT has to run the installer once.** This Mac is MDM-managed (ManageEngine), and the developer account isn't an admin, so sudo isn't available. After the install, daily use needs no admin and no password.
 
-## The teammate's folder (`fortiauto 2/`)
-**Not added as-is. Its two good ideas are folded into `setup/vpn/`.**
+Everything that can be tested without root and without a real sign-in passes: 82/82 tests, stable over 3 runs, and every one of 4 planted bugs was caught. The remaining unproven part is the live connection (tunnel, routes, DNS). It needs the admin install first. See [Still to test live](#still-to-test-live).
 
-| Point | `fortiauto` | Result |
+## What was found on this Mac
+| Check | Result | Effect |
 |---|---|---|
-| Approach | `osascript` clicks Connect in FortiClient through Accessibility | same as ours; it confirmed the direction |
-| Runs without building an app | ✅ | **adopted**: `vpn` now runs the script directly when VPN Connect.app isn't built |
-| Refuses to click when several buttons match | ✅ | **adopted** in our script |
-| Permission denied | ❌ the errors are swallowed, so `--diagnose` reports "completed" with an empty list (reproduced live) | ours detects it, including macOS's raw `-1728 … assistive access`, and exits 3 with the app to allow |
-| Finding the button | ❌ uses `entire contents`, which returns **nothing** inside FortiClient's Electron page (reproduced live), so it could never find Connect | ours walks the elements level by level |
-| Stale window state | ❌ not handled | ours rebuilds the tree before each read (see below) |
-| Focus | brings FortiClient to the front on every run | ours stays in the background |
-| Verifies the connection | ❌ "clicked" isn't "connected" | ours waits until GitLab answers |
+| Homebrew | 7.0.9, in `~/homebrew` (user-owned) | the binary is copied to a root-owned folder before root runs it |
+| `/usr/sbin/pppd` | present | openfortivpn can run |
+| openfortivpn | 1.24.1 installed from brew (has `--saml-login`) | ✅ |
+| FortiClient profile | "VPN SAML DM", SSL VPN, `vpnwm.japfacomfeed.co.id:443`, realm `sso`, SSO on, external browser | the password/TOTP plan doesn't apply; SAML mode is used |
+| FortiClient EMS | not registered | nothing blocks a third-party client |
+| Identity provider | the SAML start page redirects to `login.microsoftonline.com` | Microsoft Entra ID |
+| Gateway TLS | sends only its leaf certificate; OpenSSL fails with code 21 | GoDaddy G2 intermediate added to the CA bundle |
+| Gateway certificate | `*.japfacomfeed.co.id`, valid until **2027-02-03** | the bundle survives renewals by the same CA; no pinned hash |
+| openfortivpn DNS on macOS | only edits `/etc/resolv.conf` (ignored by macOS) | `/etc/ppp/ip-up` writes `/etc/resolver/<domain>` instead |
+| Admin rights | user not in `admin`, `/etc/sudoers.d` empty | the install needs IT |
 
-The folder is still at the workflow root, untracked. It's safe to delete, and nothing from it was installed (no LaunchAgent found).
+## Design
+```
+vpn up ──sudo -n──▶ launchctl kickstart system/local.fortivpn      (only 2 commands allowed by sudoers)
+                      └─ launchd runs /usr/local/libexec/fortivpn/openfortivpn -c /etc/openfortivpn/work.conf
+                           └─ listens on 127.0.0.1:8020, logs "Using SAML authentication URL …"
+vpn up ── open <that URL> ─▶ browser ─▶ Microsoft sign-in ─▶ gateway ─▶ redirect to 127.0.0.1:8020
+                           └─ pppd brings up ppp0 ─▶ /etc/ppp/ip-up writes /etc/resolver/japfacomfeed.co.id
+vpn up waits for "Tunnel is up and running", then checks jcvs.japfacomfeed.co.id:443 → exit 0
+```
 
-## Found in live testing (fixed)
-1. **`entire contents` misses Electron content.** FortiClient's window reported 0 elements with it. Walking `UI elements` by hand finds everything: the heading, "VPN Connected", the IP, username, duration, and the Connect/Disconnect buttons.
-2. **Stale accessibility tree.** After a disconnect, the tree kept showing "VPN Connected" and a Disconnect button for **36 s+** while the tunnel was down. The next `up` then wrongly said "already connected". Turning Electron's `AXManualAccessibility` off and on rebuilds the tree at once, so the script now does it before every read. After the fix, the state was right in every check.
-3. **Empty "clicked" label.** `down` read the button's label after pressing it, when the element was already gone. It now reads it first.
-4. **A hung script could block `vpn` (found by the tests).** The background `osascript` held the caller's output pipe, so a timeout still waited for it. Fixed: the output is detached and the job is killed on timeout.
+Security choices:
+- **No secrets anywhere.** `work.conf` holds no username, password or OTP.
+- **Sudoers allows exact commands, with no wildcard:** `launchctl kickstart system/local.fortivpn` and `launchctl kill SIGTERM system/local.fortivpn`. The original plan's `work.conf*` wildcard allowed `--pppd-plugin`, which meant root code execution.
+- **Nothing that runs as root loads user-writable code.**
+  - openfortivpn and its OpenSSL libraries are copied to `/usr/local/libexec/fortivpn/` (root-owned), relinked with `@loader_path`, and ad-hoc signed.
+  - The daemon gets `OPENSSL_CONF`, `OPENSSL_MODULES`, `SSL_CERT_FILE` and `SSL_CERT_DIR` pointing at root-owned files.
+  - Without this, anyone who could write to `~/homebrew` could get root through the passwordless rule.
+- **The log** `/var/log/fortivpn.log` is root-owned at mode 600, with a read ACL for the one developer.
+- **The pppd hooks act only on this VPN's link** (`ipparam fortivpn`). They never overwrite a resolver file they didn't write.
 
-Real UI labels confirmed:
-- **Disconnected:** a "VPN Name: VPN SAML DM" pop-up and a **Connect** button. It's "Connect", not "SAML Login".
-- **Connected:** "VPN Connected", IP, username, duration, bytes, and a **Disconnect** button.
-
-## Live results
-| Test | Result |
+## What was built
+| File | Purpose |
 |---|---|
-| `status` while disconnected, then connected | correct both ways after fix 2 (4–7 s; the tree walk is the slow part) |
-| `up` from disconnected | 6/6 connected, 13–15 s, no clicks, no sign-in prompt |
-| `up` when already connected | 0 s, no click (GitLab already reachable) |
-| GitLab after connect | `git ls-remote --heads origin develop` OK every time |
-| `down`, then `down` again | clicked Disconnect, GitLab unreachable; then "already disconnected" |
-| 3 full cycles back to back (after fixes) | all correct |
-| FortiClient window closed | reopened in the background; status correct |
-| Permission missing (before the grant) | macOS `-1728 not allowed assistive access`, now detected (exit 3) |
+| `setup/vpn/vpn` | user command: `up`, `down`, `status`, `check`, `log`. Exit codes 0/1/2/3/64 |
+| `setup/vpn/install.sh` | one-time admin install, `--uninstall`, and `--root` staging for tests |
+| `setup/vpn/ip-up`, `ip-down` | split DNS through `/etc/resolver` |
+| `setup/vpn/certs/godaddy-g2-intermediate.pem` | missing intermediate (public; SHA-256 `97:3A:41:…:1A:A6`) |
+| `setup/vpn/tests/run-tests.sh` | test suite (no root needed) |
+| `setup/vpn.md` | setup guide and troubleshooting |
+| `flow/playbooks/vpn.md` | the workflow's preflight: check → `vpn up` → ask → record |
 
-## Offline tests
-`setup/vpn/tests/run-tests.sh` → **57 passed, 0 failed**. They never touch the real FortiClient: `open`, `osascript` and `nc` are fakes.
-- **Lint:** shellcheck, bash 3.2 parse, the AppleScript compiles.
-- **Script rules (static checks):** only touches the FortiClient process; only the five request words; no shell command built from input; no `entire contents`; refreshes the tree; refuses ambiguous clicks; reads labels before pressing; detects macOS's error text.
-- **`vpn` through VPN Connect.app (simulated):** connect, repeated commands, status, down, already connected, connected but GitLab unreachable (exit 2), not allowed (exit 3), button not found, sign-in timeout, app not answering, locks.
-- **`vpn` through direct `osascript` (simulated):** connect and down, "not allowed" naming the app, raw `-1728` error, hung script stopped in 3 s, forced app mode with no app.
-- **install-applet.sh:** build in a temp folder (bundle id, hidden from the Dock, signature), uninstall.
+Workflow wiring:
+- **ORCHESTRATOR Start/Resume:** action 0 runs the VPN preflight.
+- **REVIEW:** R0 runs it too.
+- **Network errors in repo-sync, git push, mr-review and the REVIEW R4 fetch:** reconnect, then retry once.
+- **Other files:**
+  - `status.md` template: new Network section
+  - AGENTS.md: the routing row and a rule allowing `vpn up` in every step (never `vpn down`)
+  - README
+  - `run-ticket` and `review-mr` skills: a Bash timeout of 200 s for `vpn up`
 
-Mutation check:
-- Going back to `entire contents` → caught.
-- Dropping the raw-error detection → caught.
-- Dropping the output detach → not caught, because the timeout kill alone already stops a hung job. The detach is a second safeguard.
+## Test results
+`LIVE=1 setup/vpn/tests/run-tests.sh` → **82 passed, 0 failed**.
 
-The openfortivpn alternative (`setup/vpn/openfortivpn/`) still passes its 79 tests.
+| Area | Tests | Covers |
+|---|---|---|
+| Lint | 9 | shellcheck clean on all 5 scripts; parses with macOS `/bin/bash` 3.2 and `/bin/sh` |
+| `vpn` command | 31 | connect, idempotent second `up`, status/check, down, down twice; another VPN already connected (no start); sign-in rejected (fails fast); daemon crash; sign-in timeout (daemon stopped); stale "Tunnel is up" from an old session ignored; tunnel up but DNS broken (exit 2); not installed (exit 3); re-attach to a pending sign-in; missing log and conf; **sudo only ever called with the 2 allowed commands** |
+| pppd hooks | 14 | DNS from pppd, fallback to the log (only this session, malformed values rejected), other PPP links ignored, foreign resolver files untouched, clean removal |
+| Installer (staged) | 25 | relinked binary runs and links nothing in `/Users`, `/opt` or `/usr/local`; valid signatures; `plutil -lint`; `visudo -c`; no RunAtLoad/KeepAlive; no secrets; log ACL; **openfortivpn itself parses `work.conf` with no bad keys**; idempotent re-run; refuses a foreign `/etc/ppp/ip-up`; uninstall leaves nothing; input validation |
+| Live, no sign-in | 3 | gateway certificate verifies with the bundle and fails without it; the SAML start URL redirects to Microsoft |
 
-## In the workflow
-- **When it runs:** `flow/playbooks/vpn.md`, called at ORCHESTRATOR Start/Resume (action 0) and REVIEW R0. It checks GitLab, runs `setup/vpn/vpn up` if needed, asks on failure, and records the result in `status.md` → Network.
-- **Network errors** in repo-sync fetch, git push and the MR-review fetch/glab → reconnect, then retry once.
-- **Rules:** AGENTS.md allows `setup/vpn/vpn up` in every step and never `down` unless asked. The `run-ticket` and `review-mr` skills use a 200 s Bash timeout for `up`.
+- **Stability:** 3 consecutive runs, 79/79 offline each time, about 48 s per run.
+- **Mutation check:** 4 planted bugs, all caught. They were: ignoring the log offset, a wrong sudo argument, ip-up acting on every PPP link, and the daemon starting at boot.
+- **One harness bug was found and fixed during testing.** A killed fake daemon's late cleanup removed the next test's state. The `vpn` script itself was correct.
 
-## Decisions for you
-1. **Which app holds the Accessibility permission.** VS Code has it now, which made these tests possible. It works, but every extension and agent in VS Code can then click anything on screen. Tighter option: run `setup/vpn/install-applet.sh`, allow **VPN Connect**, then remove VS Code from the list. `vpn` switches to the app automatically. (Building the app from the agent was blocked by the auto-mode classifier, so you run that script yourself.)
-2. **`.claude/settings.json`** still has the uncommitted `Bash(vpn …)` entries, which no longer match the `setup/vpn/vpn` path. Suggest `git checkout .claude/settings.json`. Separately, you could allow `Bash(setup/vpn/vpn check)`, `Bash(setup/vpn/vpn status)` and `Bash(setup/vpn/vpn up)`, so runs don't prompt.
-3. **`fortiauto 2/`**: delete it, or keep it outside the repo. It isn't committed.
+## Still to test live
+These need the admin install and a real Microsoft sign-in, so they couldn't be run here:
+1. **SAML redirect to `127.0.0.1:8020`.** Does the gateway hand the browser back to openfortivpn? This is the biggest risk. A no-root probe was written for it but was blocked by the session's safety rules, because it would have exchanged a real SSO token.
+2. Tunnel up, routes pushed (`set-routes`), and `jcvs.japfacomfeed.co.id` reachable.
+3. Split DNS: does macOS pppd run `/etc/ppp/ip-up` with `ipparam fortivpn`, and do the DNS servers arrive (from pppd or the log)?
+4. `vpn down` restores routes and DNS, and the internet still works.
+5. How long the gateway session lasts before a new sign-in is needed.
+
+Live acceptance checklist, after IT runs `sudo setup/vpn/install.sh --user <you>`:
+- [ ] FortiClient VPN disconnected
+- [ ] `vpn up`: the browser opens, the sign-in completes, exit 0
+- [ ] `vpn status` shows `connected (ppp0)`, and `jcvs.japfacomfeed.co.id: reachable`
+- [ ] `dscacheutil -q host -a name jcvs.japfacomfeed.co.id` resolves; `git ls-remote` on a service repo works
+- [ ] the public internet still works (e.g. `curl -sI https://www.google.com`)
+- [ ] `vpn up` again shows `already connected`
+- [ ] `vpn log` shows no password or cookie
+- [ ] `vpn down`: `ls /etc/resolver` has no fortivpn files left, and the internet still works
+
+## Risks and open points
+- **Company policy.** Running a third-party VPN client on an MDM-managed Mac needs IT's approval. Ask IT first; they also have to run the install.
+- **FortiGate setting.** If the redirect in item 1 fails, IT must allow SAML redirects back to the client. Until then, the workflow falls back to asking you to connect FortiClient.
+- **Certificate change.** Renewals by GoDaddy keep working. A change of CA needs the new intermediate and a re-install.
+- **Split DNS covers all of `japfacomfeed.co.id`.** All its names resolve through the VPN's DNS while connected. Narrow it with `--domains` if public names under it misbehave.
+- **openfortivpn upgrades** need an admin re-install, because the daemon uses the copied binary.
+- **Pending decision: `.claude/settings.json`.** An edit added `Bash(vpn check|status|log|up)` to the allow list, so the agent can connect without a prompt. Adding `vpn down` to `ask`, and reverting the first edit, were both blocked as self-modification. The file is **not committed**: keep it or revert it.
+- **Baseline commit.** The repo had no commits, so the existing files were committed to `main` as `chore: baseline of the dev workflow`, to give this branch a base. Local only, nothing pushed.

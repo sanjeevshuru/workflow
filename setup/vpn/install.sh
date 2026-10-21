@@ -1,8 +1,8 @@
 #!/bin/bash
 # One-time install of the command-line VPN (openfortivpn, SAML sign-in). Run by an admin:
 #
-#   sudo setup/vpn/openfortivpn/install.sh --user <developer-login> [--openfortivpn <path>] [--domains "<d1> <d2>"]
-#   sudo setup/vpn/openfortivpn/install.sh --user <developer-login> --uninstall
+#   sudo setup/vpn/install.sh --user <developer-login> [--openfortivpn <path>] [--domains "<d1> <d2>"]
+#   sudo setup/vpn/install.sh --user <developer-login> --uninstall
 #
 # What it installs (everything root-owned):
 #   /usr/local/libexec/fortivpn/        openfortivpn + its OpenSSL libraries, relinked and ad-hoc signed,
@@ -105,7 +105,7 @@ OFV_SRC=$(realpath "$OFV_SRC")
 "$OFV_SRC" --help 2>&1 | grep -q -- '--saml-login' || die "$OFV_SRC has no --saml-login (needs openfortivpn 1.17+)"
 
 for f in "$PPP/ip-up" "$PPP/ip-down"; do
-  is_ours "$f" || die "$f exists and wasn't written by this installer; merge it by hand (see setup/vpn/openfortivpn/README.md)"
+  is_ours "$f" || die "$f exists and wasn't written by this installer; merge it by hand (see setup/vpn.md)"
 done
 for d in $DOMAINS; do
   printf '%s' "$d" | grep -Eq '^[A-Za-z0-9.-]+$' || die "invalid domain: $d"
@@ -145,7 +145,7 @@ for f in "$LIBEXEC"/*.dylib "$LIBEXEC/openfortivpn"; do
 done
 chmod 755 "$LIBEXEC/openfortivpn"
 # Empty OpenSSL config: stops libcrypto from reading the user-writable Homebrew openssl.cnf as root.
-echo "# $MARKER: empty on purpose (see setup/vpn/openfortivpn/install.sh)" >"$LIBEXEC/openssl.cnf"
+echo "# $MARKER: empty on purpose (see setup/vpn/install.sh)" >"$LIBEXEC/openssl.cnf"
 chmod 644 "$LIBEXEC/openssl.cnf"
 "$LIBEXEC/openfortivpn" --version >/dev/null 2>&1 || die "relinked openfortivpn doesn't run"
 own -R root:wheel "$LIBEXEC"
@@ -154,7 +154,7 @@ own -R root:wheel "$LIBEXEC"
 step "writing ${ETC#"$ROOT"}"
 mkdir -p "$ETC"; chmod 755 "$ETC"
 cat >"$ETC/work.conf" <<EOF
-# $MARKER: written by setup/vpn/openfortivpn/install.sh. No secrets: sign-in is SAML (Microsoft) in the browser.
+# $MARKER: written by setup/vpn/install.sh. No secrets: sign-in is SAML (Microsoft) in the browser.
 host = $GATEWAY_HOST
 port = $GATEWAY_PORT
 realm = $REALM
@@ -195,7 +195,7 @@ mkdir -p "$(dirname "$PLIST")"
 cat >"$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- $MARKER: written by setup/vpn/openfortivpn/install.sh. Started on demand by 'vpn up'; never at boot. -->
+<!-- $MARKER: written by setup/vpn/install.sh. Started on demand by 'vpn up'; never at boot. -->
 <plist version="1.0">
 <dict>
   <key>Label</key><string>$LABEL</string>
@@ -227,7 +227,7 @@ plutil -lint "$PLIST" >/dev/null || die "invalid plist"
 step "writing ${SUDOERS#"$ROOT"}"
 tmp=$(mktemp)
 cat >"$tmp" <<EOF
-# $MARKER: written by setup/vpn/openfortivpn/install.sh. Lets $USER_NAME start and stop the on-demand VPN
+# $MARKER: written by setup/vpn/install.sh. Lets $USER_NAME start and stop the on-demand VPN
 # daemon without a password. Exact arguments only; nothing else runs as root.
 Cmnd_Alias FORTIVPN_CMDS = /bin/launchctl kickstart system/$LABEL, /bin/launchctl kill SIGTERM system/$LABEL
 "$USER_NAME" ALL=(root) NOPASSWD: FORTIVPN_CMDS

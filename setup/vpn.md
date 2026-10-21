@@ -1,71 +1,67 @@
-# VPN: connected for you (macOS + FortiClient)
+# VPN: connected for you (openfortivpn)
 
-The workflow connects the company VPN by itself at the start of a run (`flow/playbooks/vpn.md`). Nobody clicks Connect: a script clicks **Connect** in FortiClient, and FortiClient's Microsoft sign-in then completes in your browser. In live tests it connected in about 14 s with no clicks and no sign-in prompt, because the browser was already signed in to Microsoft.
+The workflow connects the company VPN by itself at the start of a run (`flow/playbooks/vpn.md`), and disconnects on request. It uses `openfortivpn`, an open-source FortiGate SSL VPN client, instead of the FortiClient app, driven by one command. Agents run it from the repo as `setup/vpn/vpn`; the install also puts a copy at `/usr/local/bin/vpn`.
 
 ```
-setup/vpn/vpn up           connect
-setup/vpn/vpn down         disconnect
-setup/vpn/vpn check        is GitLab reachable? (no UI)
-setup/vpn/vpn status       FortiClient's state + GitLab reachability
-setup/vpn/vpn setup-check  is the clicking allowed?
-setup/vpn/vpn dump         FortiClient's on-screen labels (for a new FortiClient version)
+vpn up       connect: the Microsoft sign-in runs in a background browser tab, so you stay in your app
+vpn down     disconnect
+vpn status   connected | connecting | disconnected, plus GitLab reachability
+vpn check    is GitLab reachable, through any VPN?
+vpn log      last 40 lines of the VPN log
 ```
+
+In AI tools: `/vpn`, `/vpn down`, `/vpn status` (Claude Code, Cursor, Antigravity), or "connect vpn" (Codex).
 
 ## How it works
-- FortiClient (installed by IT) already has the rights to create the tunnel. Only its window needs a click.
-- `setup/vpn/forticlient/VPNConnect.applescript` reads FortiClient's window through macOS Accessibility, without bringing it to the front:
-  - **Disconnected:** the window shows "VPN Name: VPN SAML DM" and a **Connect** button.
-  - **Connected:** it shows "VPN Connected" and a **Disconnect** button.
-  - It only touches the FortiClient process, accepts only `connect`, `disconnect`, `status`, `check` and `dump`, and refuses to click when a label matches more than one button.
-- After **Connect**, FortiClient opens the Microsoft sign-in in your browser:
-  - If the browser has a Microsoft session, the sign-in finishes by itself.
-  - If the session has expired or MFA is due, sign in there. No tool can skip that.
-- `vpn up` waits until `jcvs.japfacomfeed.co.id:443` answers (up to 180 s).
-- **Not possible:** FortiClient's own Auto Connect / Always Up. The FortiGate turns them off for this profile (`AllowAutoConnect 0`), and only IT can turn them on.
+- The gateway `vpnwm.japfacomfeed.co.id` (realm `sso`) signs in with **Microsoft Entra ID (SAML)**. There's no VPN password, so none is stored anywhere.
+- `vpn up` starts an on-demand root daemon (`local.fortivpn`), which waits on `127.0.0.1:8020`. Then `vpn up` opens the gateway's sign-in page in a **background** tab of your default browser (`open -g`), so your focus doesn't move.
+  - If the browser is signed in to Microsoft, the sign-in completes by itself. The gateway redirects the tab back to `127.0.0.1:8020`, and the tunnel comes up.
+  - If the tunnel isn't up after **25 s** (`FORTIVPN_SIGNIN_GRACE`), Microsoft needs you, so `vpn up` brings the browser forward. `FORTIVPN_KEEP_FOCUS=0` opens the page in front straight away.
+- **Not possible:** connecting at boot or reconnecting silently. Each connection needs a browser sign-in, and the gateway ends sessions after its timeout.
+- **Split DNS:** macOS ignores `/etc/resolv.conf`, so `/etc/ppp/ip-up` points each domain in `/etc/openfortivpn/resolver-domains` (default `japfacomfeed.co.id`) at the VPN's DNS servers through `/etc/resolver/`. `/etc/ppp/ip-down` removes them again.
+- **TLS:** the gateway sends only its own certificate, without GoDaddy's G2 intermediate. The CA bundle adds that intermediate (`setup/vpn/certs/`), so certificate renewals by the same CA keep working with no pinned hash.
 
-FortiClient 7.4 quirks the script handles (both found in live tests):
-- `entire contents` sees nothing inside FortiClient's Electron page, so the script walks the window's elements level by level.
-- FortiClient's accessibility tree goes stale while the window is in the background. It showed "VPN Connected" for 36 s after a disconnect. The script turns Electron's accessibility off and on before every read, which rebuilds it.
+## Install (once per Mac, needs an admin password once)
+1. Install the client (Homebrew under your home folder is fine):
+   ```bash
+   brew install openfortivpn
+   ```
+2. From this folder, as an admin user:
+   ```bash
+   sudo setup/vpn/install.sh --user "$(id -un)"
+   ```
+   - It copies openfortivpn and its OpenSSL libraries into a root-owned folder before anything runs as root. A user-writable Homebrew folder can then never be used to get root through the passwordless rule.
+   - It installs a sudoers rule for exactly two commands: `launchctl kickstart system/local.fortivpn` and `launchctl kill SIGTERM system/local.fortivpn`. So after this, `vpn up` and `vpn down` need no password.
+   - The header of `setup/vpn/install.sh` lists every file it writes.
+   - Options: `--openfortivpn <path>` and `--domains "<d1> <d2>"` (internal DNS domains).
+3. Disconnect FortiClient's VPN if it's connected (the two would fight over routes and DNS; `vpn up` won't start while GitLab is already reachable through another VPN). Then:
+   ```bash
+   setup/vpn/vpn up
+   setup/vpn/vpn status
+   ```
 
-## Setup (once per Mac, no admin)
-macOS only lets an app click buttons in another app after you allow it under **System Settings → Privacy & Security → Accessibility**. Pick one of these:
-
-**A. Allow the app you run the workflow from (simplest).**
-- Turn on **Visual Studio Code**, Cursor, Terminal or iTerm, whichever runs the agent.
-- `vpn` then runs the script directly with `osascript`.
-- Downside: everything inside that app (extensions, AI agents) can then click anything on screen.
-
-**B. Allow only a small app (tighter).**
-- Run `setup/vpn/install-applet.sh`. It builds `~/Applications/VPN Connect.app` and opens the Accessibility settings.
-- Add **VPN Connect** there with **+**.
-- `vpn` uses the app automatically when it exists, so your editor or terminal no longer needs the permission. Remove it from the list.
-- After rebuilding the app, turn it off and on again in Accessibility.
-
-Then:
-```bash
-setup/vpn/vpn setup-check     # click Allow if macOS asks to let it control System Events
-setup/vpn/vpn down && setup/vpn/vpn up
-```
+**Updating openfortivpn:** after `brew upgrade openfortivpn`, re-run step 2. The daemon keeps using the copied binary until then.
 
 ## Uninstall
 ```bash
-setup/vpn/install-applet.sh --uninstall
+sudo setup/vpn/install.sh --user <developer-login> --uninstall
+brew uninstall openfortivpn
 ```
-Then remove VPN Connect (or your editor or terminal) from the Accessibility list.
 
 ## Tests
 ```bash
-setup/vpn/tests/run-tests.sh
+setup/vpn/tests/run-tests.sh          # offline: vpn command against a simulated daemon, pppd hooks, staged installer
+LIVE=1 setup/vpn/tests/run-tests.sh   # plus the gateway's TLS chain and SAML redirect (no sign-in)
 ```
-This runs the `vpn` command against a simulated FortiClient script (both the app and the direct `osascript` way), checks the script's safety rules, and builds the app in a temp folder. It needs `shellcheck` (brew), and no permissions. It never touches the real FortiClient.
+They need `shellcheck` and `openfortivpn` (both from brew), and no root.
 
 ## Troubleshooting
-- **Exit 3, "not allowed"**: the app named in the message isn't on under Accessibility, or VPN Connect was rebuilt. Turn it off and on.
-- **"no SAML Login / Connect button found"**: FortiClient's window changed, for example after an update, or it's on another page.
-  - Run `setup/vpn/vpn dump` to see its labels.
-  - Then adjust `connectLabels`, `disconnectLabels` or `navLabels` at the top of `setup/vpn/forticlient/VPNConnect.applescript`. Rebuild only if you use VPN Connect.app.
-- **Exit 1, "not connected after 180s"**: the browser sign-in didn't finish. Look at the browser tab FortiClient opened.
-- **Exit 2, connected but GitLab unreachable**: FortiClient's tunnel is up, but DNS or routes don't cover GitLab. Ask IT.
-
-## Alternative without FortiClient
-`setup/vpn/openfortivpn/` replaces FortiClient with the open-source openfortivpn client. It needs IT to install it with admin rights; see its `README.md` and `REPORT.md`.
+- **`vpn up` exits 3 ("not allowed")**: the install (step 2) hasn't run on this Mac, or ran for another user.
+- **"already reachable through another VPN"**: FortiClient is connected. Disconnect it there, then `vpn up`.
+- **Browser ends on a gateway error instead of "SAML session id received"**: the FortiGate must allow SAML redirects back to the client (FortiOS 7.0+ does when the client sends `redirect=1`). Ask IT.
+- **Exit 2: tunnel up, GitLab unreachable (DNS)**:
+  - Run `vpn log` and look for `ip-up: resolver …`.
+  - If it says `no DNS servers`, the gateway sent none. Ask IT for the internal DNS IP, and write `/etc/resolver/japfacomfeed.co.id` with `nameserver <ip>` (as root).
+  - Check with `dscacheutil -q host -a name jcvs.japfacomfeed.co.id`.
+- **Certificate errors after a renewal by a different CA**: replace `setup/vpn/certs/godaddy-g2-intermediate.pem` with the new CA's intermediate, then re-run the install.
+- **Timed out**: you didn't finish the sign-in within 180 s. Run `vpn up` again; it reuses a connection that's still waiting.

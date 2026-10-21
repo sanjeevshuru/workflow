@@ -117,7 +117,7 @@ When the author pushes fixes, run it again. It checks what was fixed and only ad
 **Accounts and access**
 - [ ] Jira (`productclosio.atlassian.net`): every step
 - [ ] Figma, ideally a Dev or Full seat: frontend tickets only. View seats are limited to ~6 calls a month.
-- [ ] GitLab (`jcvs.japfacomfeed.co.id`) and the **company VPN**: anything that touches the repos. On macOS the workflow connects it for you through FortiClient at the start of a run (`setup/vpn.md`, one-time setup, no admin).
+- [ ] GitLab (`jcvs.japfacomfeed.co.id`) and the **company VPN**: anything that touches the repos. On macOS the workflow connects it for you with openfortivpn at the start of a run (`setup/vpn.md`, one-time install with an admin password).
 - [ ] A GitLab personal access token with the `api` scope: MR review only
 - [ ] Each service running locally with its own `.env`: for the step 3 tests
 - [ ] A back-office login: for the browser test
@@ -147,7 +147,7 @@ When the author pushes fixes, run it again. It checks what was fixed and only ad
 3. Connect Jira, Figma and Playwright in your AI tool (`setup/mcp.md`).
 4. For MR review: `brew install glab`, then on the VPN run `glab auth login --hostname jcvs.japfacomfeed.co.id` (`setup/mcp.md` → GitLab CLI).
 5. Put the BRD, PRD and tech specs in `sources/` and list them in `sources/INDEX.md`.
-6. macOS: let runs connect the VPN by themselves (`setup/vpn.md`). Allow your editor or terminal under Privacy & Security → Accessibility (or build the tighter `VPN Connect.app` with `setup/vpn/install-applet.sh`), then run `setup/vpn/vpn setup-check`.
+6. macOS: let runs connect the VPN by themselves (`setup/vpn.md`): `brew install openfortivpn`, then `sudo setup/vpn/install.sh --user "$(id -un)"` once.
 
 For the backend API test, it will ask you to set these in your terminal: `AIFLOW_WS2_CLIENT_ID`, `AIFLOW_WS2_CLIENT_SECRET`, `AIFLOW_WS1_SESSION_COOKIE`, `AIFLOW_PARTNER_ID` and `AIFLOW_USER_ID`. They're never saved to files (`config/postman.md`).
 

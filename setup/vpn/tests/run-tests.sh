@@ -57,6 +57,7 @@ case "$1 $2" in
     [ -e "$FAKE_STATE/daemon.pid" ] && kill "$(cat "$FAKE_STATE/daemon.pid")" 2>/dev/null
     rm -f "$FAKE_STATE/running" "$FAKE_STATE/ppp" "$FAKE_STATE/daemon.pid"
     echo "INFO:   Cancelling threads..." >>"$FAKE_LOG" ;;
+  "print system/local.fortivpn") [ ! -e "$FAKE_STATE/unloaded" ] ;;
   *) echo "fake launchctl: unexpected $*" >&2; exit 1 ;;
 esac
 EOF
@@ -179,7 +180,8 @@ check "up → exit 0" test "$RC" = 0
 check "up → reports connected and probe reachable" grep -q 'connected (ppp0); jcvs.japfacomfeed.co.id reachable' <<<"$OUT"
 check "up → opened the exact SAML URL from the log" test "$(cat "$S/opened" 2>/dev/null)" = "https://vpnwm.japfacomfeed.co.id:443/remote/saml/start?redirect=1&realm=sso"
 check "up → one kickstart" test "$(count kickstarts)" = 1
-check "up → finished promptly (${took}s)" test "$took" -le 5
+# About 3 s when the machine is idle (measured); the margin covers a busy machine.
+check "up → finished promptly (${took}s)" test "$took" -le 8
 
 run up
 check "up again → 'already connected', exit 0" test "$RC" = 0 -a -n "$(echo "$OUT" | grep 'already connected')"
@@ -303,6 +305,9 @@ OUT=$(FORTIVPN_ROOT="$IRT" "$VPN" installed 2>&1); RC=$?
 check "files there but the passwordless rule isn't active → exit 3" test "$RC" = 3 -a -n "$(grep 'MISSING    … active for' <<<"$OUT")"
 OUT=$(FORTIVPN_ROOT="$WORK/empty-root" "$VPN" installed 2>&1); RC=$?
 check "nothing installed → exit 3, every item missing" test "$RC" = 3 -a "$(grep -c MISSING <<<"$OUT")" = 6
+touch "$S/unloaded"; OUT=$(FORTIVPN_ROOT="$IRT" "$VPN" installed 2>&1); RC=$?
+check "files there but the daemon isn't loaded (failed reload) → exit 3, names it" test "$RC" = 3 -a -n "$(grep 'MISSING  daemon loaded' <<<"$OUT")"
+rm -f "$S/unloaded"
 reset ok; touch "$S/nosudo"; run up
 check "vpn up when not installed → exit 3 with the diagnosis and install command" test "$RC" = 3 -a -n "$(grep 'install.sh' <<<"$OUT")" -a -n "$(grep MISSING <<<"$OUT")"
 reset ok
@@ -392,6 +397,45 @@ else
 
   out=$("$INST" --user "$(id -un)" --root "$IR" 2>&1)
   check "re-running the installer is safe (idempotent)" test $? = 0
+
+  # Daemon reload, with a fake launchctl that behaves like macOS: bootout is asynchronous, and
+  # bootstrap fails with "5: Input/output error" while the old job is still loaded.
+  L="$WORK/lctl"; mkdir -p "$L"
+  cat >"$WORK/fake-lctl" <<'EOF'
+#!/bin/bash
+L="$LSTATE"; echo "$*" >>"$L/calls"
+case "$1" in
+  print) [ -e "$L/loaded" ] || exit 113; [ -e "$L/running" ] && echo "	pid = 4242"; exit 0 ;;
+  kill) ( sleep 0.5; rm -f "$L/running" ) & exit 0 ;;
+  bootout) ( sleep "${BOOTOUT_DELAY:-1}"; rm -f "$L/loaded" "$L/running" ) & exit 0 ;;
+  enable) rm -f "$L/disabled"; exit 0 ;;
+  bootstrap)
+    if [ -e "$L/loaded" ] || [ -e "$L/broken" ]; then echo "Bootstrap failed: 5: Input/output error" >&2; exit 5; fi
+    touch "$L/loaded"; exit 0 ;;
+esac
+EOF
+  chmod +x "$WORK/fake-lctl"
+  lreset() { rm -rf "$L"; mkdir -p "$L"; }
+  inst() { out=$(LSTATE="$L" INSTALL_LAUNCHCTL="$WORK/fake-lctl" "$INST" --user "$(id -un)" --root "$IR" 2>&1); rc=$?; }
+
+  lreset; touch "$L/loaded"; LSTATE="$L" "$WORK/fake-lctl" bootout system/local.fortivpn
+  LSTATE="$L" "$WORK/fake-lctl" bootstrap system x 2>/dev/null; rc=$?
+  check "fake launchctl reproduces the bug: bootstrap right after bootout → error 5" test "$rc" = 5
+  sleep 1.2
+
+  lreset; inst
+  check "daemon not loaded → loaded on first try" test "$rc" = 0 -a -e "$L/loaded" -a "$(grep -c bootstrap "$L/calls")" = 1
+  lreset; touch "$L/loaded"; inst
+  check "daemon loaded, VPN down → waits for bootout to finish, then reloads (no error 5)" test "$rc" = 0 -a -e "$L/loaded" -a -z "$(grep 'Bootstrap failed' <<<"$out")"
+  lreset; touch "$L/loaded" "$L/running"; inst
+  check "VPN connected → stopped cleanly, then reloaded" test "$rc" = 0 -a -e "$L/loaded" -a -n "$(grep '^kill SIGTERM' "$L/calls")"
+  check "  … and says the VPN was disconnected (run vpn up)" grep -q "disconnecting it to reload" <<<"$out"
+  lreset; touch "$L/loaded"; BOOTOUT_DELAY=30 inst
+  check "old daemon never unloads → clear error, non-zero exit" test "$rc" != 0 -a -n "$(grep "didn't unload" <<<"$out")"
+  pkill -f "sleep 30" 2>/dev/null
+  lreset; touch "$L/broken"; inst
+  check "bootstrap keeps failing → retried 5 times, then a clear error" test "$rc" != 0 -a "$(grep -c bootstrap "$L/calls")" = 5 -a -n "$(grep "couldn't load the daemon" <<<"$out")"
+  check "  … the daemon is re-enabled before loading (a disabled job also fails with error 5)" grep -q '^enable system/local.fortivpn' "$L/calls"
 
   echo "#!/bin/sh" >"$IR/etc/ppp/ip-up"
   out=$("$INST" --user "$(id -un)" --root "$IR" 2>&1); rc=$?

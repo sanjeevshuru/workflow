@@ -27,6 +27,7 @@ A fetch, push or glab call that fails on the network reconnects and retries once
 | 2 | openfortivpn 1.24.1 logs "Listening for SAML login" but never the "Using SAML authentication URL" line, so `vpn up` waited its full 15 s start timeout (27 s per connect) | open the sign-in page as soon as it's listening, with the URL built from `work.conf` in openfortivpn's own format → **9–10 s** |
 | 3 | Chrome comes to the front even for `open -g` (background) | a focus guard switches back to your app while the sign-in completes by itself; the browser is brought forward only if the tunnel isn't up after 25 s |
 | 4 | `/etc/resolver` was created readable by root only (pppd runs `ip-up` with umask 077). DNS still worked, but the folder couldn't be inspected | `ip-up` sets umask 022 and `chmod 755`. **Re-run the installer to apply it.** |
+| 5 | Re-running the installer while connected failed with **"Bootstrap failed: 5: Input/output error"**. `bootout` is asynchronous, so the reload hit the still-loaded old job; the VPN was dropped and the daemon left unloaded. `vpn installed` still said "installed", because it only checked files | the installer stops a running VPN cleanly, waits until the old job is gone, re-enables it, and retries `bootstrap` (tested against a fake launchctl that reproduces error 5). `vpn installed` now also checks that the daemon is loaded |
 
 Also confirmed live:
 - **Split DNS:** `ip-up` set `japfacomfeed.co.id → 10.90.0.53, 10.190.0.55`. macOS shows it as resolver #9; pppd also adds the same servers scoped to `ppp0`.
@@ -34,7 +35,7 @@ Also confirmed live:
 - **FortiClient** keeps showing "Disconnected" while openfortivpn is up. That's expected (see Open points), and `vpn up` now says so.
 
 ## Tests
-`setup/vpn/tests/run-tests.sh` → **99 passed, 0 failed**. No root needed; the daemon, `sudo`, `launchctl`, `open`, `lsappinfo` and `defaults` are simulated.
+`setup/vpn/tests/run-tests.sh` → **108 passed, 0 failed**. No root needed; the daemon, `sudo`, `launchctl`, `open`, `lsappinfo` and `defaults` are simulated.
 
 | Area | Covers |
 |---|---|
@@ -42,8 +43,9 @@ Also confirmed live:
 | `vpn` command | connect, repeated up/down, status/check, another VPN already connected, rejected sign-in, crash, timeout, stale log lines, DNS broken (exit 2), not installed (exit 3), re-attaching to a pending sign-in; only the two allowed sudo commands are ever used |
 | Live-found behaviour | URL built at once when the log has no URL line; a URL line in the log wins |
 | Focus | background tab by default; browser forward only after the grace; guard pushes Chrome back during the quiet phase and stops once connected; nothing switched if you were already in the browser; `FORTIVPN_KEEP_FOCUS=0` |
-| `vpn installed` | all present; each missing piece named; passwordless rule inactive; nothing installed; `vpn up` prints the diagnosis and command |
+| `vpn installed` | all present; each missing piece named; passwordless rule inactive; daemon not loaded; nothing installed; `vpn up` prints the diagnosis and command |
 | pppd hooks | DNS from pppd or the log, other PPP links ignored, foreign files untouched, folder readable under umask 077 |
+| Installer reload | macOS-like fake launchctl: reproduces error 5; first load; reload waits for the async bootout; connected VPN stopped first; never-unloading job and permanently failing bootstrap give clear errors; job re-enabled |
 | Installer (staged) | relinked root-owned binary, signatures, plist, `visudo -c`, no secrets, ACL'd log, idempotent, refuses a foreign `ip-up`, uninstall |
 
 ## Security (unchanged)

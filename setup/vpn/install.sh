@@ -242,10 +242,47 @@ mkdir -p "$(dirname "$BIN")"
 install -m 755 "$HERE/vpn" "$BIN"; own root:wheel "$BIN"
 
 # ---------------------------------------------------------------- load + verify
+# launchctl is replaceable only in --root staging, for the test suite (sudo resets the environment).
+LCTL=/bin/launchctl
+if staged && [ -n "${INSTALL_LAUNCHCTL:-}" ]; then LCTL="$INSTALL_LAUNCHCTL"; fi
+
+loaded() { "$LCTL" print "system/$LABEL" >/dev/null 2>&1; }
+running() { "$LCTL" print "system/$LABEL" 2>/dev/null | grep -q 'pid = '; }
+wait_for() { # wait_for <seconds> <command…>: until the command succeeds
+  local n=$(( $1 * 4 )); shift
+  while [ "$n" -gt 0 ]; do "$@" && return 0; sleep 0.25; n=$((n - 1)); done
+  return 1
+}
+not() { ! "$@"; }
+
+# Reload the daemon so a changed plist takes effect. bootout is asynchronous: bootstrapping again
+# before the old job is gone fails with "Bootstrap failed: 5: Input/output error".
+reload_daemon() {
+  if loaded; then
+    if running; then
+      step "the VPN is connected: disconnecting it to reload the daemon (run 'vpn up' afterwards)"
+      "$LCTL" kill SIGTERM "system/$LABEL" 2>/dev/null || true
+      wait_for 15 not running || step "warning: openfortivpn didn't stop within 15s"
+    fi
+    "$LCTL" bootout "system/$LABEL" 2>/dev/null || true
+    wait_for 15 not loaded || die "the old daemon didn't unload; try again in a few seconds"
+  fi
+  "$LCTL" enable "system/$LABEL" 2>/dev/null || true
+  local try out
+  for try in 1 2 3 4 5; do
+    if out=$("$LCTL" bootstrap system "$PLIST" 2>&1); then
+      loaded && return 0
+    fi
+    [ "$try" -lt 5 ] && sleep 1
+  done
+  die "couldn't load the daemon: ${out:-unknown error}"
+}
+
+if ! staged || [ -n "${INSTALL_LAUNCHCTL:-}" ]; then
+  reload_daemon
+  step "daemon loaded"
+fi
 if ! staged; then
-  launchctl bootout "system/$LABEL" 2>/dev/null || true
-  launchctl bootstrap system "$PLIST"
-  launchctl print "system/$LABEL" >/dev/null || die "daemon didn't load"
   sudo -l -U "$USER_NAME" | grep -q "system/$LABEL" || die "sudoers rule not active (is /etc/sudoers.d included?)"
   step "done. As $USER_NAME, run: vpn up"
 else

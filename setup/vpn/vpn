@@ -134,12 +134,14 @@ cmd_installed() {
     if "$@"; then say "ok       $label"; else say "MISSING  $label"; missing=1; fi
   }
   rule_active() { sudo -n -l 2>/dev/null | grep -q "system/$LABEL"; }
+  daemon_loaded() { launchctl print "system/$LABEL" >/dev/null 2>&1; }
   check_item "VPN client (root-owned copy)    /usr/local/libexec/fortivpn/openfortivpn" test -x "$R/usr/local/libexec/fortivpn/openfortivpn"
   check_item "gateway config                  /etc/openfortivpn/work.conf" test -r "$R/etc/openfortivpn/work.conf"
   check_item "on-demand daemon                /Library/LaunchDaemons/$LABEL.plist" test -e "$R/Library/LaunchDaemons/$LABEL.plist"
   check_item "passwordless start/stop rule    /etc/sudoers.d/fortivpn" test -e "$R/etc/sudoers.d/fortivpn"
   check_item "  … active for $(id -un)" rule_active
   check_item "VPN log readable                $LOG" test -r "$R$LOG"
+  check_item "daemon loaded in launchd        system/$LABEL" daemon_loaded
   [ "$missing" -eq 0 ] && { say "installed"; return 0; }
 
   for c in /opt/homebrew/bin/openfortivpn /usr/local/bin/openfortivpn "$HOME/homebrew/bin/openfortivpn"; do

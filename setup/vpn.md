@@ -60,7 +60,8 @@ LIVE=1 setup/vpn/tests/run-tests.sh   # plus the gateway's TLS chain and SAML re
 They need `shellcheck` and `openfortivpn` (both from brew), and no root.
 
 ## Troubleshooting
-- **`vpn up` exits 3 ("not allowed")**: the install (step 2) hasn't run on this Mac, or ran for another user.
+- **`vpn up` exits 3 ("not allowed")**: the install (step 2) hasn't run on this Mac, ran for another user, or the daemon isn't loaded. `vpn installed` says which; re-run the install.
+- **Re-running the install while connected** disconnects the VPN: the daemon has to be reloaded. Run `vpn up` afterwards. (Older copies of the installer could fail here with "Bootstrap failed: 5: Input/output error", because they reloaded before macOS had finished unloading. The current one waits.)
 - **"already reachable through another VPN"**: FortiClient is connected. Disconnect it there, then `vpn up`.
 - **Browser ends on a gateway error instead of "SAML session id received"**: the FortiGate must allow SAML redirects back to the client (FortiOS 7.0+ does when the client sends `redirect=1`). Ask IT.
 - **Exit 2: tunnel up, GitLab unreachable (DNS)**:

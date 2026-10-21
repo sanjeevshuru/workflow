@@ -18,6 +18,7 @@ It works the same in **Claude Code, Cursor, Antigravity and Codex**. There's not
 | Work on a ticket (start, or continue where it stopped) | `/run-ticket SCRUM-123` | "run SCRUM-123" |
 | Start a ticket over from scratch | `/restart-ticket SCRUM-123` | "restart SCRUM-123" |
 | Review an MR | `/review-mr` (oldest waiting for you), `/review-mr <MR link>` or `/review-mr SCRUM-123` | "review MR" |
+| Connect the VPN (also done automatically at the start of a run) | `/vpn` (or `/vpn down`, `/vpn status`) | "connect vpn" |
 
 For a frontend ticket, you can add Figma links after the key: `/run-ticket SCRUM-123 <figma link> …`.
 

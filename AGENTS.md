@@ -13,7 +13,7 @@ This folder is a markdown-driven, human-gated dev workflow. The same instruction
 | "deployment doc <KEY>" | Read `flow/ORCHESTRATOR.md` → Resume, then run step 04 (`flow/steps/04-deployment-doc.md`). It needs Gate 4 approved first |
 | "approve" / "yes" / "proceed" at a gate | Pass the gate as described in the current step |
 | "review MR" / "review <KEY>" / `/review-mr [MR url \| KEY]` / "resume review <KEY>" | Read `flow/REVIEW.md` and follow it (state in `reviews/<KEY>/`) |
-| "connect vpn" / "vpn up" / "vpn status" | Read `flow/playbooks/vpn.md` and run its procedure (or just `setup/vpn/vpn status`) |
+| "connect vpn" / "vpn up" / "vpn status" / `/vpn [up\|down\|status]` | Read `flow/playbooks/vpn.md` and run its procedure (or just `setup/vpn/vpn status`) |
 | "archive <KEY>" / "reopen <KEY>" | Read `flow/ORCHESTRATOR.md` → Keeping plans until the ticket is done |
 | anything else about a ticket in `runs/` | Read `runs/<KEY>/status.md` first (or `runs/_archive/<KEY>/status.md`) |
 

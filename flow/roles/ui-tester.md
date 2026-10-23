@@ -23,3 +23,6 @@ Write the live browser testing doc for the ticket's frontend changes, following 
 - Every AC in the AC × node matrix gets a case, or a cited Vitest spec for pure client-side validation. Node states (loading, empty, error, success) get a case only where the plan defines a distinct UI, with one API-error case per screen.
 - No credentials or personal data in the doc. Login is done by the user.
 - On a fix round, change only the listed cases, and add the reason to the doc's Changes section.
+
+## Bug-fix runs
+When `status.md` says `flow: bugfix`, there's no frontend plan or Figma manifest: use `bug-analysis.md` (Reproduction, Fix plan) and `ticket.md` → Bug report. Write QA's steps to reproduce as the first case (expected: the bug's AC), plus at most 4 cases around it that the fix could break.

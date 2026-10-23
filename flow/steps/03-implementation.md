@@ -10,6 +10,8 @@ Turn the approved plans into code on feature branches:
 This is the only step that writes to code repos and Jira. Every write goes through `flow/playbooks/git.md`.
 
 ## Preconditions
+In a bug-fix run (`status.md` → `flow: bugfix`), read `flow/BUGFIX.md` → B3 first: Gate B replaces Gate 2, and `bug-analysis.md` → Fix plan replaces the plans.
+
 - Gate 2 is approved for every in-scope plan (`status.md` → Gate log).
 - `lifecycle: active`.
 - The step starts right after Gate 2, or on a later `/run-ticket <KEY>` / "implement <KEY>" (a resume). If a plan has unapproved changelog rows, get them approved first.

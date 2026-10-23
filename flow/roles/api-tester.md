@@ -30,3 +30,6 @@ Write the Postman testing doc, collection, environment and seed/cleanup SQL for 
 - No secrets, cookies or real personal data in any file. Secret variables stay empty in `environment.json`.
 - Fixtures follow `config/postman.md` → Test data: pre-check, unmistakable values, cleanup by prefix or captured ids.
 - On a fix round, change only the listed cases, and add the reason to `testing-doc.md` → Changes.
+
+## Bug-fix runs
+When `status.md` says `flow: bugfix`, the plan is `bug-analysis.md` → Fix plan, and the contract is the existing one it cites. Write the reproduction from `bug-analysis.md` → Reproduction as the first case (expected: the bug's AC), plus at most 4 cases around it that the fix could break. Each cites `[AC<n>]` or the Fix plan.

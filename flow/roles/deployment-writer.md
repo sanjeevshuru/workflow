@@ -16,6 +16,7 @@ You write one file and nothing else. No repo edits, no checkouts, no running ser
 - Backend: `runs/<KEY>/postman/collection.json`, `testing-doc.md`, `report.md`
 - Frontend: `runs/<KEY>/browser/testing-doc.md`, `report.md`; for fullstack, also `runs/<KEY>/deployment-backend.md`
 - `config/deployment.md`, `config/services.md`
+- Bug-fix runs (`flow: bugfix`): `runs/<KEY>/bug-analysis.md` replaces the plans and `requirements.md`. Put the bug's reproduction first among the verification checks, so QA can re-test on dev.
 - Read-only git on the pushed hashes, only to confirm a fact in `deployment-facts.md`
 
 ## Output

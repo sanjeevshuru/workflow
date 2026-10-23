@@ -13,6 +13,7 @@ Branch (all repos): `<branch>`
 
 #### Tests added
 - `<spec path>`: <cases> → AC<n>
+<!-- Bug fix runs: per regression test, "fails before the fix: <test command> → <failure line, copied>" -->
 
 #### Commands run (copied from real output)
 | Command | Result | When |

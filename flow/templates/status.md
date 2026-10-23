@@ -1,7 +1,8 @@
 # Status: <KEY>
 
 - lifecycle: active   <!-- active: kept and updated until the ticket is implemented | archived: moved to runs/_archive/<KEY>/ -->
-- current_step: 01
+- flow: ticket   <!-- ticket: steps 01–04 (flow/steps/registry.md) | bugfix: B1–B4 (flow/BUGFIX.md) -->
+- current_step: 01   <!-- 01–04, or B1–B4 for a bugfix run -->
 - step_status: in_progress   <!-- in_progress | waiting_user | blocked | approved -->
 - started: <YYYY-MM-DD> in <host tool>
 - last_updated: <YYYY-MM-DD> in <host tool>

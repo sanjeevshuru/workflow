@@ -5,7 +5,7 @@ You run the flow for one ticket (`<KEY>`, e.g. `SCRUM-512`). You own every inter
 ## Start
 0. **VPN preflight**: follow `flow/playbooks/vpn.md`. GitLab needs the VPN, and `setup/vpn/vpn up` connects it with openfortivpn, with no clicks (the Microsoft sign-in runs in a background browser tab). On a machine without the one-time VPN install, it asks the user to install it before anything else (playbook step 0). Record the result in `status.md` → Network once that file exists.
 1. Read `flow/rules.md`, `flow/steps/registry.md` and `lessons/workflow.md`. Apply the workflow lessons throughout the run.
-2. If `runs/<KEY>/status.md` exists, go to **Resume** instead.
+2. If `runs/<KEY>/status.md` exists, go to **Resume** instead. If it says `flow: bugfix`, resume in `flow/BUGFIX.md`.
 3. Create `runs/<KEY>/`, and create `status.md` from `flow/templates/status.md`.
 4. If the user passed Figma links with the start command, write them to `status.md` → Inputs.
 5. Run the first step in the registry.
@@ -32,7 +32,7 @@ Roles live in `flow/roles/<role>.md`. Each role reads only the files it is given
 Triggered by "restart <KEY>" or `/restart-ticket <KEY> [figma links…]`. The user wants a clean run, not a resume.
 1. Don't ask again; the command is the confirmation. If `runs/<KEY>/` doesn't exist, just **Start**.
 2. **Set the old run aside, never delete it.** Move `runs/<KEY>/` to `runs/_archive/<KEY>__restarted-<YYYYMMDD-HHMM>/`, and add a Lifecycle log row there ("restarted by user"). If it's already in `runs/_archive/<KEY>/` (archived), leave it there.
-3. **Start** from scratch: a new `status.md`, step 01 from action 1. That re-fetches the ticket with all fields, re-asks the scope triage, and re-syncs the repos (`flow/playbooks/repo-sync.md`). Nothing from the old run is reused: no answers (`Q<n>`), no RCs, no plans.
+3. **Start** from scratch: a new `status.md`, step 01 from action 1 (for a `flow: bugfix` run, `flow/BUGFIX.md` → Start, from B1). That re-fetches the ticket with all fields, re-asks the scope triage, and re-syncs the repos (`flow/playbooks/repo-sync.md`). Nothing from the old run is reused: no answers (`Q<n>`), no RCs, no plans.
 4. Keep the shared knowledge: `knowledge/<service>.md` repo profiles and `lessons/*.md` are not reset. They aren't per ticket.
 5. Add a Notes line in the new `status.md`: "Restarted; previous run at `runs/_archive/<KEY>__restarted-<…>/`". Tell the user in one line where the old run went.
 
@@ -40,7 +40,8 @@ If the user wants a fresh analysis but to **keep their answers**, that's not a r
 
 ## Resume
 0. **VPN preflight**: follow `flow/playbooks/vpn.md` and record the result in `status.md` → Network. The tunnel doesn't survive sleep or a new session.
-1. Read `runs/<KEY>/status.md`: `current_step`, `step_status`, Gate log, Repo sync, Notes.
+1. Read `runs/<KEY>/status.md`: `flow`, `current_step`, `step_status`, Gate log, Repo sync, Notes.
+   - `flow: bugfix` (or `current_step` B1–B4): follow `flow/BUGFIX.md` → Resume from here on. A status file without a `flow` field is a ticket run: add `flow: ticket`.
    - Re-sync the in-scope repos (`flow/playbooks/repo-sync.md` → On resume) before any role reads code. In step 03 this doesn't apply to repos on their feature branch (see below). If new commits touch files the plans rely on, ask whether to re-run `code-scout` and the affected planner.
    - A status file without a `lifecycle` field is an older run: treat it as `active` and add the field.
    - A status file without a **Jira** → Claim line predates the claim: do the step 01 claim now (`config/jira.md` → Workflow writes to Jira). It only changes a ticket that's still in To Do or unassigned.

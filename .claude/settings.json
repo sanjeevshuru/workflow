@@ -25,6 +25,10 @@
       "mcp__atlassian__getTransitionsForJiraIssue",
       "Bash(glab --version)",
       "Bash(glab auth status:*)",
+      "Bash(vpn check)",
+      "Bash(vpn status)",
+      "Bash(vpn log)",
+      "Bash(vpn up)",
       "mcp__atlassian__atlassianUserInfo"
     ],
     "ask": [

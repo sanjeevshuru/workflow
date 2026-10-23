@@ -6,15 +6,15 @@ Never put secrets or `.env` values in this file. Names, hosts and commands only.
 
 ## How a dev deploy happens
 <!-- TODO (user): fill in once. Step 04 asks on its first run and writes the answer here. -->
-- Backend services: `<TODO: e.g. merge to develop triggers the pipeline / manual deploy from <tool> / ask <person>>`
+- Backend services: deployed to dev **by the MR reviewer, only after the MR is approved** (answered by the user 2026-10-22, SCRUM-529). The deployment doc is written after the MR is merged and deployed.
 - closio-web-v2: `<TODO>`
-- Who runs migrations on dev, and where: `<TODO: e.g. the pipeline runs npm run migrate / a developer runs it from <where>>`
+- Who runs migrations on dev, and where: a **developer runs `npm run migrate`** manually (user, 2026-10-22). Where it is run from: `TODO: ask the user`
 
 ## Dev hosts
 | Service | Dev base URL | Source |
 |---|---|---|
-| ws1closio | `https://dev-closio-ws1-apiprivate.japfacomfeed.co.id` (+ path prefix, TODO confirm) | `closio-web-v2:project_docs/492-test-suite.md` |
-| ws2closio | `<TODO>` | |
+| ws1closio | `https://dev-closio-ws1-apiprivate.japfacomfeed.co.id` (+ path prefix: `TODO: ask the ws1 deployer` — user did not know, 2026-10-23, SCRUM-530; locally routes mount at root, `src/app.js:88`) | `closio-web-v2:project_docs/492-test-suite.md` |
+| ws2closio | `TODO: known after the MR is merged and deployed (user, 2026-10-22)` | |
 | ws2targetsales | `<TODO>` | |
 | ws2notification | `<TODO>` | |
 | ws2pricingengine | `<TODO>` | |

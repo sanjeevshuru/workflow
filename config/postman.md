@@ -7,8 +7,8 @@ Never read or print `.env` values. Only the variable **names** below are used.
 ## Services when running locally
 | Service | Start (in the repo) | Default PORT | Path prefix | Run with override |
 |---|---|---|---|---|
-| ws1closio | `npm run dev` | 3000 | `/ws1closio` (`APP_PATH_PREFIX`) | `WS2*_BASE_URL` → local ws2 (see below) |
-| ws2closio | `npm run dev` | 3002 | `/ws2closio` | none |
+| ws1closio | `npm run dev` | 3000 | none: routes at `/api/...` (`src/app.js:88` mounts at root; confirmed 2026-10-23, SCRUM-530) | `WS2*_BASE_URL` → local ws2 (see below); local Redis (see Infra) |
+| ws2closio | `npm run dev` | 3002 | none: routes at `/api/...` (`APP_PATH_PREFIX` only names log files; confirmed 2026-10-22, SCRUM-529) | none |
 | ws2targetsales | `RUN_MODE=api npm run dev` | 3001 | `/ws2targetsales` | `PORT=3011` if another 3001 service runs |
 | ws2notification | `RUN_MODE=api npm run dev` | 3001 | `/ws2notification` | `PORT=3012` if another 3001 service runs |
 | ws2pricingengine | `npm run dev` | 3001 | `/ws2pricingengine` | `PORT=3013` if another 3001 service runs |
@@ -18,7 +18,7 @@ Never read or print `.env` values. Only the variable **names** below are used.
 - **Overrides go in the process environment of the start command** (e.g. `PORT=3011 RUN_MODE=api npm run dev`). Never edit `.env`.
 - **ws1 → local ws2**: start ws1 with the matching upstream variable pointing at the local ws2, e.g. `WS2TARGETSALES_BASE_URL=http://localhost:3011/ws2targetsales`. The upstream variable names are `WS2CLOSIO_BASE_URL`, `WS2TARGETSALES_BASE_URL`, `WS2NOTIF_BASE_URL` / `WS2NOTIFICATIONS_BASE_URL` and `WS2PRICINGENGINE_BASE_URL`. Check how ws1 builds the URL from the variable (`nodejs-ws1closio:src/utils/axiosInstances.js`) before the first run, so the path prefix isn't doubled.
 - **Readiness**: there is no shared health route. A service is up when an HTTP request to `http://localhost:<port><prefix>/` gets any HTTP status, e.g. `curl -s -o /dev/null -w '%{http_code}' …`. Wait up to 60 s, then show the last 30 log lines and ask.
-- **Infra**: ws1 needs Redis (sessions). ws2 services need Postgres; ws2closio also needs Redis and Oracle, and ws2targetsales needs Redis/BullMQ. If a service can't start because a dependency is unreachable, stop and ask. Don't fake it.
+- **Infra**: ws1 needs Redis (sessions). Before the first local ws1 run, check that ws1 can reach Redis (its log shows `Redis Client …: Connected`, not `connect ETIMEDOUT`). The committed ws1 code always connects with `rediss://` to the `.env` host; if that's unreachable, ask the user how they run Redis locally (e.g. their own local-Redis tweaks plus `REDIS_HOST=localhost REDIS_PORT=6379` in the process env). Never commit such tweaks. ws2 services need Postgres; ws2closio also needs Redis and Oracle, and ws2targetsales needs Redis/BullMQ. If a service can't start because a dependency is unreachable, stop and ask. Don't fake it.
 
 ## Auth
 | Layer | Headers / cookie | Collection variables |

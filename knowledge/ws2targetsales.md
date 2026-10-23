@@ -64,6 +64,7 @@
 - `VALID_BUSINESS1_SALESPERSON_TYPES` = `['NON_TRADER','TRADER']` (it includes TRADER). There is no NON_TRADER-only constant. [code: appConstants.js:328]
 - No pg NUMERIC type parser is configured, so DECIMAL columns come back as strings. Always echo them through `Number()`.
 - The shared run-check helper hardcodes `CONFIG_CHANGE_RUN_IN_PROGRESS` and has 6 call sites. Changing it affects slab and payout create, update and status.
+- Channel values are free text everywhere: there is no canonical channel list. `normalizeChannel` only trims and maps the HORE aliases (in any case) to `HORE`; every other value keeps its case. So `Catering`/`catering` are distinct in the ageing config POST and PATCH (validity, duplicate check, stored rows) and in slab groups. `normalizeChannel` is shared with 6 targets-module services, so don't change it for one feature. [code: src/utils/channelUtils.js:3-10; src/utils/incentives/ageingDeductionConfigUtils.js:70-84; src/services/incentives/ageingDeductionConfigService.js:162] (SCRUM-574)
 
 ## What has been built (by module)
 ### Business 1 config APIs

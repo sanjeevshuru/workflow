@@ -16,6 +16,21 @@
 - AC2: <quoted>
 <!-- if derived: "AC3 (proposed): ..." -->
 
+## Bug report
+<!-- Bug fix runs only (flow/BUGFIX.md → B1). Quote QA's words. Delete for other tickets. -->
+- Steps to reproduce:
+  1. <quoted>
+- Expected: <quoted>
+- Actual: <quoted>
+- Environment: <dev | staging | build | URL> · role: <> · partner / business: <>
+- Frequency: <always | sometimes | once | not stated>
+- Reporter: <name>, <date>
+- Evidence: <screenshot / video / HAR / log, read: yes/no, what it shows>
+- Related ticket: <ORIG (relation), run at `runs/<ORIG>/` | none found>
+
+### Reopened, round <n>
+<!-- Appended when QA reopens the bug: new comments and attachments, quoted, with dates -->
+
 ## Relevant comments
 - <author, date>: <quote or tight summary>
 

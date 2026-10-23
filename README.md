@@ -7,6 +7,7 @@ It works the same in **Claude Code, Cursor, Antigravity and Codex**. There's not
 ## What it can do
 
 - **Run a ticket end to end**: read the ticket, designs and specs, ask only the questions the code can't answer, plan the backend and frontend, write the code with tests, test it, commit, push and open MRs, then write the deployment doc.
+- **Fix bugs QA raised**: give it the bug's number; it finds the root cause in the code, fixes it with a regression test, verifies it, and hands it back for review and a dev deploy.
 - **Review MRs**: pick the oldest MR waiting for your review, check it against the ticket and the spec, and post review comments.
 - **Pause and pick up anywhere**: stop at any point and continue later, even in a different AI tool.
 - **Learn from your corrections**: when you correct it, it proposes a lesson, and uses it on later tickets once you approve.
@@ -16,6 +17,7 @@ It works the same in **Claude Code, Cursor, Antigravity and Codex**. There's not
 | What you want | Claude Code, Cursor, Antigravity | Codex |
 |---|---|---|
 | Work on a ticket (start, or continue where it stopped) | `/run-ticket SCRUM-123` | "run SCRUM-123" |
+| Fix a bug QA raised (key or just the number) | `/fix-bug 514` or `/fix-bug SCRUM-514` | "fix bug 514" |
 | Start a ticket over from scratch | `/restart-ticket SCRUM-123` | "restart SCRUM-123" |
 | Review an MR | `/review-mr` (oldest waiting for you), `/review-mr <MR link>` or `/review-mr SCRUM-123` | "review MR" |
 | Connect the VPN (also done automatically at the start of a run) | `/vpn` (or `/vpn down`, `/vpn status`) | "connect vpn" |
@@ -68,6 +70,25 @@ It never invents a command or URL. The first time, it asks how dev deploys work 
 
 ✋ **You approve the deployment doc.**
 
+## Fixing a bug
+
+`/fix-bug 514` (a bare number becomes `SCRUM-514`) is the short path for bugs QA raises. If you run `/run-ticket` on a Bug, it offers to switch to this flow.
+
+1. **Intake**: reads the bug with all its fields: steps to reproduce, expected vs actual, environment, screenshots, and the story it was found in. If that story was built with this workflow, its requirements and plans in `runs/` define what "correct" means. Moves it to **In Development** and assigns it to you if needed, asks whether it's backend, frontend or fullstack, and updates the repos.
+2. **Root cause**: traces the steps to reproduce through the code to the exact line that goes wrong, finds the commit that introduced it and any other place with the same defect, and proposes the smallest fix that matches the code around it, plus a regression test. If the code alone can't settle it, it offers to reproduce the bug locally first. If the code does what the spec says, it tells you instead of "fixing" it.
+
+✋ **You approve the root cause and the fix.**
+
+3. **Fix**: on a `fix/scrum-514` branch it writes the regression test first and shows it failing, then the fix, then runs every test. A short Postman or browser check replays QA's steps.
+
+✋ **You approve the commit** (`fix(SCRUM-514): …`). ✋ **You approve the push.** It opens the MR and moves the ticket to **Code Review**.
+
+4. **Deployment doc** for dev, with QA's steps as the first check, so QA can re-test.
+
+✋ **You approve the deployment doc.**
+
+If QA reopens the bug, run `/fix-bug 514` again: it reads QA's new comments, works out what the first fix missed, and goes through the same checkpoints on the same branch.
+
 ## Reviewing an MR
 
 `/review-mr` does this:
@@ -107,7 +128,7 @@ When the author pushes fixes, run it again. It checks what was fixed and only ad
 - Weaken or skip tests to make them pass
 - Touch uncommitted work or resolve merge conflicts without asking you
 - Read `.env` values, or save passwords, tokens or cookies anywhere
-- Change Jira beyond moving your ticket to In Development (and assigning it to you if it's unassigned) and later to Code Review
+- Change Jira beyond moving your ticket (or bug) to In Development (and assigning it to you if it's unassigned) and later to Code Review
 - Guess. If something is unclear, it asks.
 
 ## What you need

@@ -9,13 +9,14 @@ This folder is a markdown-driven, human-gated dev workflow. The same instruction
 | "run <KEY>" / "start <KEY>" / "plan ticket <KEY>" / `/run-ticket <KEY> [figma links...]` | Read `flow/ORCHESTRATOR.md`: Start if `runs/<KEY>/` doesn't exist, otherwise Resume. Run every registered step (01 → 02 → 03 → 04), stopping only at questions and gates |
 | "resume <KEY>" / "resume" | Read `flow/ORCHESTRATOR.md` → Resume |
 | "restart <KEY>" / `/restart-ticket <KEY>` | Read `flow/ORCHESTRATOR.md` → Restart (forced): set the old run aside and start from scratch |
+| "fix bug <n>" / "fix <KEY>" / `/fix-bug <KEY \| number>` (a bug QA raised) | Read `flow/BUGFIX.md`: Start if `runs/<KEY>/` doesn't exist, otherwise Resume. A bare number gets the project key from `config/jira.md`. Runs B1 → B4, stopping only at questions and gates |
 | "implement <KEY>" | Same as `/run-ticket <KEY>`: Resume. If Gate 2 is approved this continues in step 03; if not, the earlier steps finish first |
 | "deployment doc <KEY>" | Read `flow/ORCHESTRATOR.md` → Resume, then run step 04 (`flow/steps/04-deployment-doc.md`). It needs Gate 4 approved first |
 | "approve" / "yes" / "proceed" at a gate | Pass the gate as described in the current step |
 | "review MR" / "review <KEY>" / `/review-mr [MR url \| KEY]` / "resume review <KEY>" | Read `flow/REVIEW.md` and follow it (state in `reviews/<KEY>/`) |
 | "connect vpn" / "vpn up" / "vpn status" / `/vpn [up\|down\|status]` | Read `flow/playbooks/vpn.md` and run its procedure (or just `setup/vpn/vpn status`) |
 | "archive <KEY>" / "reopen <KEY>" | Read `flow/ORCHESTRATOR.md` → Keeping plans until the ticket is done |
-| anything else about a ticket in `runs/` | Read `runs/<KEY>/status.md` first (or `runs/_archive/<KEY>/status.md`) |
+| anything else about a ticket in `runs/` | Read `runs/<KEY>/status.md` first (or `runs/_archive/<KEY>/status.md`). If it says `flow: bugfix`, continue in `flow/BUGFIX.md`, not the step registry |
 
 ## Always-on rules
 
@@ -31,6 +32,7 @@ This folder is a markdown-driven, human-gated dev workflow. The same instruction
      - commit only after the user's yes at Gate 3
      - push and open MRs only after the user's yes at Gate 4
    - No force pushes, no pushes to protected or development branches, no merges, rebases or `--no-verify`.
+   - **Bug fix** (`flow/BUGFIX.md`): B1–B2 follow the steps 01–02 limits (repo sync and the claim only). B3 is step 03 and B4 is step 04, with the same limits.
    - **Step 04** (deployment doc) is read-only toward repos and Jira. It writes only to `runs/<KEY>/`, plus `config/deployment.md` when the user answers a dev-deploy question.
    - Jira: the only writes are the step 01 claim (above) and moving the ticket to **Code Review** after a successful push. Never comment, edit other fields or add links.
    - VPN: `setup/vpn/vpn up` (`flow/playbooks/vpn.md`) is a local network action, not a write to a repo or Jira, so it's allowed in every step and in MR review. Never run `setup/vpn/vpn down` unless the user asks.

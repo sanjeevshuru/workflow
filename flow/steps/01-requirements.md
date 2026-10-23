@@ -21,7 +21,8 @@ Turn the Jira ticket, the source documents and the designs into one agreed requi
    - If it's **unassigned**, assign it to the current user.
 
    Don't ask first: picking the ticket is the go-ahead. Tell the user in one line what changed (or that nothing needed to), and record it in `status.md` → Jira. If a write fails, report it and continue. Then re-read the status and assignee for `ticket.md`.
-5. Write `runs/<KEY>/ticket.md` from `flow/templates/ticket.md`:
+5. **Bug?** If the Jira type is **Bug**, ask before anything else: switch to the bug-fix flow (`flow/BUGFIX.md`: root cause, fix, regression test), or continue with this flow? On a switch, set `status.md` → `flow: bugfix` and continue at `flow/BUGFIX.md` → B1 → 4.
+6. Write `runs/<KEY>/ticket.md` from `flow/templates/ticket.md`:
    - Number the acceptance criteria AC1, AC2, …, quoting the ticket's wording.
    - If the ticket has no AC, derive **candidates** from the description, mark each `(proposed)`, and add a question asking the user to confirm them. Proposed AC are not agreed AC.
    - Quote rather than paraphrase when the wording matters.

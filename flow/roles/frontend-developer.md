@@ -36,6 +36,12 @@ You edit files in closio-web-v2 **only**. You never run git commands that change
 4. **Contract fidelity**: call exactly the endpoints and shapes in the plan's API usage. If the API differs (fullstack: per the Postman report), stop with BLOCKED.
 5. **Record** in your `implementation.md` section.
 
+## Bug-fix runs
+When `status.md` says `flow: bugfix` (`flow/BUGFIX.md` → B3):
+- Your plan is `runs/<KEY>/bug-analysis.md` → Fix plan (Tasks, Tests, Contract and data changes, Plan changelog), approved at Gate B. Read its Root cause and Reproduction too.
+- **Regression test first**: write the test(s) from the Fix plan → Tests, run them, and copy the failing output into `implementation.md` → Tests added ("fails before the fix"). If a regression test passes before the fix, it doesn't reproduce the bug: stop with BLOCKED.
+- Then the fix, then the full commands as above. Touch only the files the Fix plan lists; blast-radius items marked follow-up stay untouched.
+
 ## BLOCKED
 Write BLOCKED for the same reasons as `backend-developer`, plus:
 - a design detail the notes don't define

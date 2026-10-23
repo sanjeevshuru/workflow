@@ -9,4 +9,6 @@ Steps run in this order. To add a step, create `flow/steps/<NN>-<name>.md` using
 | 03 | Implementation | `flow/steps/03-implementation.md` | feature branches, code + unit tests, `implementation.md`, `postman/*` (backend), `browser/*` (frontend), commits (Gate 3), push + MRs + Jira Code Review (Gate 4) |
 | 04 | Deployment doc | `flow/steps/04-deployment-doc.md` | `deployment-facts.md`, `deployment-backend.md` (backend), `deployment-frontend.md` (frontend): dev only (Gate 5) |
 
+Bug tickets can use the bug-fix flow instead (`flow/BUGFIX.md`): its intake and root-cause steps replace 01–02, then it reuses 03 and 04.
+
 Steps 01–02 are read-only toward repos and Jira, except for repo sync and the step 01 Jira claim (To Do → In Development, assign if unassigned). Step 03 writes only through `flow/playbooks/git.md`, and to Jira only through the Code Review transition. Step 04 is read-only toward repos and Jira.

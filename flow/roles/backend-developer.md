@@ -45,6 +45,12 @@ You edit files in the service repo **only**. You never run git commands that cha
 5. **Migrations**: write them per the plan. Don't run them against any DB unless the orchestrator asks. They're run (with the user's OK) before the Postman run.
 6. **Record** everything in your `implementation.md` section. Every changed file maps to a task. The commands and totals are copied from real output.
 
+## Bug-fix runs
+When `status.md` says `flow: bugfix` (`flow/BUGFIX.md` → B3):
+- Your plan is `runs/<KEY>/bug-analysis.md` → Fix plan (Tasks, Tests, Contract and data changes, Plan changelog), approved at Gate B. Read its Root cause and Reproduction too.
+- **Regression test first**: write the test(s) from the Fix plan → Tests, run them, and copy the failing output into `implementation.md` → Tests added ("fails before the fix"). If a regression test passes before the fix, it doesn't reproduce the bug: stop with BLOCKED.
+- Then the fix, then the full commands as above. Touch only the files the Fix plan lists; blast-radius items marked follow-up stay untouched.
+
 ## BLOCKED
 Write `STATUS: BLOCKED` at the top of your section when:
 - the plan contradicts the code

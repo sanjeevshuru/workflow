@@ -8,6 +8,8 @@ Write a short, step-by-step deployment doc for the ticket, for the **developer w
 The docs live in `runs/<KEY>/` only. This step is **read-only** toward repos and Jira.
 
 ## Preconditions
+In a bug-fix run (`flow: bugfix`), `bug-analysis.md` replaces the plans and `requirements.md` in the inputs below.
+
 - Gate 4 is approved, and `status.md` → Implementation shows every in-scope repo pushed, with its MR URL and remote hash.
 - The step starts right after Gate 4, on a later `/run-ticket <KEY>` (a resume), or with "deployment doc <KEY>".
 
